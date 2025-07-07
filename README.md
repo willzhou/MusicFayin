@@ -25,7 +25,8 @@ pip install -r requirements.txt
 ```
 
 2. Install MusicFayIn extensions
-```git clone https://github.com/your-repo/MusicFayIn.git
+```bash
+git clone https://github.com/your-repo/MusicFayIn.git
 cd MusicFayIn
 pip install .
 ```
