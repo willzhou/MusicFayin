@@ -32,10 +32,13 @@ pip install -r requirements.txt
 ```bash
 git clone https://github.com/willzhou/MusicFayIn.git
 cd MusicFayIn
-pip install .
+pip install -r requirements.txt
 ```
 
 3. Download model checkpoints and place them in the `ckpt/` directory following this structure:
+```bash
+huggingface-cli download tencent/SongGeneration
+```
 ```
 ckpt/
 ├── model_1rvq/
@@ -47,11 +50,11 @@ ckpt/
     ├── config.yaml
     └── model.pt
 ```
-
 ## Usage
 
 Run the Streamlit application:
 ```bash
+cd SongGeneration
 streamlit run MusicFayIn/musicfayin.py
 ```
 
@@ -77,8 +80,6 @@ The workflow consists of 5 steps:
 36 combinations including piano, guitar, synthesizer, strings, and more
 
 ## Technical Architecture
-
-![System Architecture](docs/architecture.png)
 
 The system uses a multi-stage generation pipeline:
 1. **Lyrics Processing**: DeepSeek API for lyric generation and analysis
