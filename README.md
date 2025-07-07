@@ -15,6 +15,10 @@ MusicFayIn is an advanced AI-powered music generation system that creates comple
 - 🎙️ **Multi-Prompt Generation**: Supports text, audio, and automatic prompting
 - 🖥️ **Web Interface**: Streamlit-based UI for easy interaction
 
+ ![首页界面](https://raw.githubusercontent.com/willzhou/MusicFayIn/main/assets/home.png)
+ ![文件上传](https://raw.githubusercontent.com/willzhou/MusicFayIn/main/assets/lyrics.png)
+ ![识别结果](https://raw.githubusercontent.com/willzhou/MusicFayIn/main/assets/generation.png)
+
 ## Installation
 
 1. Install core dependencies (requires SongGeneration)
@@ -26,7 +30,7 @@ pip install -r requirements.txt
 
 2. Install MusicFayIn extensions
 ```bash
-git clone https://github.com/your-repo/MusicFayIn.git
+git clone https://github.com/willzhou/MusicFayIn.git
 cd MusicFayIn
 pip install .
 ```
