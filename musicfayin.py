@@ -17,6 +17,16 @@ from pathlib import Path
 import re
 import glob
 
+# 在文件顶部添加项目根目录定义
+PROJECT_ROOT = Path(__file__).parent  # 假设musicfayin.py现在放在SongGeneration的父目录
+SONG_GEN_DIR = PROJECT_ROOT / "SongGeneration"
+ 
+def get_absolute_path(relative_path: str) -> Path:
+    """将相对路径转换为绝对路径"""
+    if relative_path.startswith("ckpt/"):
+        return SONG_GEN_DIR / relative_path
+    return PROJECT_ROOT / relative_path
+
 # 常量定义
 DEEPSEEK_API_KEY = st.secrets['DEEPSEEK_API_KEY'] # 换成你自己的API KEY
 DEEPSEEK_URL = st.secrets['DEEPSEEK_URL']
@@ -712,24 +722,41 @@ def generate_jsonl_entries(prefix: str, lyrics: str, analysis: Dict[str, Any], p
 
 def save_jsonl(entries: List[Dict], filename: str) -> str:
     """保存JSONL文件"""
-    os.makedirs("output", exist_ok=True)
-    filepath = os.path.join("output", filename)
+    output_dir = get_absolute_path("output")
+    output_dir.mkdir(exist_ok=True)
+    filepath = output_dir / filename
     
     with open(filepath, "w", encoding="utf-8") as f:
         for entry in entries:
             f.write(json.dumps(entry, ensure_ascii=False) + "\n")
     
-    return filepath
+    return str(filepath)
 
 def run_music_generation(jsonl_path: str, output_dir: str = "output"):
-    """执行音乐生成命令并处理输出"""
+    """执行音乐生成命令（根据显存自动选择脚本）"""
+    # 获取显存信息
+    gpu_info = get_gpu_memory()
+    
+    # 默认使用低内存模式
+    script = "generate_lowmem.sh"
+    
+    if gpu_info and gpu_info["total"] >= 30:
+        script = "generate.sh"
+        st.info(f"检测到充足显存 ({gpu_info['total']:.1f}GB)，将使用标准生成模式")
+    else:
+        st.warning(f"显存不足30GB ({gpu_info['total']:.1f}GB if available)，使用低显存模式")
+    
+    # 使用绝对路径
     cmd = [
         "bash",
-        "generate_lowmem.sh",
-        "ckpt/songgeneration_base/",
-        jsonl_path,
-        output_dir
+        str(SONG_GEN_DIR / script),
+        str(SONG_GEN_DIR / "ckpt/songgeneration_base/"),
+        str(get_absolute_path(jsonl_path)),
+        str(get_absolute_path(output_dir))
     ]
+    
+    # 显示执行命令
+    st.code(" ".join(cmd), language="bash")
     
     # 创建进度显示
     progress_bar = st.progress(0)
@@ -741,7 +768,8 @@ def run_music_generation(jsonl_path: str, output_dir: str = "output"):
         cmd,
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
-        universal_newlines=True
+        universal_newlines=True,
+        cwd=str(SONG_GEN_DIR)  # 在SongGeneration目录下执行
     )
     
     # 实时显示输出
@@ -894,68 +922,7 @@ def get_gpu_memory():
     except Exception as e:
         st.warning(f"无法获取GPU显存信息: {str(e)}")
         return None
-
-def run_music_generation(jsonl_path: str, output_dir: str = "output"):
-    """执行音乐生成命令（根据显存自动选择脚本）"""
-    # 获取显存信息
-    gpu_info = get_gpu_memory()
     
-    # 默认使用低内存模式
-    script = "generate_lowmem.sh"
-    
-    if gpu_info and gpu_info["total"] >= 30:  # 显存≥30GB时使用标准脚本
-        script = "generate.sh"
-        st.info(f"检测到充足显存 ({gpu_info['total']:.1f}GB)，将使用标准生成模式")
-    else:
-        st.warning(f"显存不足30GB ({gpu_info['total']:.1f}GB if available)，使用低内存模式")
-    
-    cmd = [
-        "bash",
-        script,  # 根据显存自动选择的脚本
-        "ckpt/songgeneration_base/",
-        jsonl_path,
-        output_dir
-    ]
-    
-    # 显示执行命令
-    st.code(" ".join(cmd), language="bash")
-    
-    # 创建进度显示
-    progress_bar = st.progress(0)
-    status_text = st.empty()
-    status_text.text("音乐生成中...")
-    output_container = st.expander("生成日志", expanded=True)
-    
-    # 执行命令
-    process = subprocess.Popen(
-        cmd,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        universal_newlines=True
-    )
-    
-    # 实时显示输出
-    full_output = ""
-    while True:
-        line = process.stdout.readline()
-        if line == '' and process.poll() is not None:
-            break
-        if line:
-            full_output += line
-            output_container.code(full_output, language="bash")
-            
-            # 更新进度
-            if "Generating:" in line:
-                progress_bar.progress(min(100, progress_bar.progress_value + 20))
-    
-    # 处理结果
-    if process.returncode == 0:
-        st.success("🎵 音乐生成完成！")
-        display_generated_files(output_dir)
-    else:
-        st.error(f"❌ 生成失败 (返回码: {process.returncode})")
-        st.text(full_output)
-
 
 # 典型结构模板
 # ========================
@@ -1162,8 +1129,9 @@ def setup_ui():
         prompt_audio_path = "input/sample_prompt_audio.wav"  # 默认值
         if uploaded_file is not None:
             # 保存上传的文件到input目录
-            os.makedirs("input", exist_ok=True)
-            prompt_audio_path = os.path.join("input", uploaded_file.name)
+            input_dir = get_absolute_path("input")
+            input_dir.mkdir(exist_ok=True)
+            prompt_audio_path = input_dir / uploaded_file.name
             with open(prompt_audio_path, "wb") as f:
                 f.write(uploaded_file.getbuffer())
             st.success(f"文件已保存: {prompt_audio_path}")
@@ -1196,15 +1164,15 @@ def setup_ui():
         try:
             # 验证模型文件是否存在
             required_files = [
-                "ckpt/songgeneration_base/config.yaml",
-                "ckpt/songgeneration_base/model.pt",
-                "ckpt/model_1rvq/model_2_fixed.safetensors",
-                "ckpt/model_septoken/model_2.safetensors",
-                "ckpt/prompt.pt"
+                "SongGeneration/ckpt/songgeneration_base/config.yaml",
+                "SongGeneration/ckpt/songgeneration_base/model.pt",
+                "SongGeneration/ckpt/model_1rvq/model_2_fixed.safetensors",
+                "SongGeneration/ckpt/model_septoken/model_2.safetensors",
+                "SongGeneration/ckpt/prompt.pt"
             ]
             
             missing_files = [f for f in required_files if not os.path.exists(f)]
-            
+                        
             if missing_files:
                 raise FileNotFoundError(
                     f"缺少必要的模型文件:\n{chr(10).join(missing_files)}\n"
@@ -1374,21 +1342,21 @@ if __name__ == "__main__":
     os.environ.update({
         'USER': 'root',
         'PYTHONDONTWRITEBYTECODE': '0',
-        'TRANSFORMERS_CACHE': str(Path.cwd() / "third_party/hub"),
+        'TRANSFORMERS_CACHE': str(SONG_GEN_DIR / "third_party/hub"),
         'NCCL_HOME': '/usr/local/tccl',
         'PYTHONPATH': ":".join([
-            str(Path.cwd() / "codeclm/tokenizer"),
-            str(Path.cwd()),
-            str(Path.cwd() / "codeclm/tokenizer/Flow1dVAE"),
+            str(SONG_GEN_DIR / "codeclm/tokenizer"),
+            str(PROJECT_ROOT),
+            str(SONG_GEN_DIR / "codeclm/tokenizer/Flow1dVAE"),
             os.getenv('PYTHONPATH', '')
         ])
     })
     Path(os.environ['TRANSFORMERS_CACHE']).mkdir(exist_ok=True)  # 确保目录存在
 
     # 确保必要的目录存在
-    os.makedirs("output/audios", exist_ok=True)
-    os.makedirs("output/jsonl", exist_ok=True)
-    os.makedirs("input", exist_ok=True)
+    (PROJECT_ROOT / "output/audios").mkdir(parents=True, exist_ok=True)
+    (PROJECT_ROOT / "output/jsonl").mkdir(parents=True, exist_ok=True)
+    (PROJECT_ROOT / "input").mkdir(parents=True, exist_ok=True)
     
     # 设置并运行UI
     setup_ui()
