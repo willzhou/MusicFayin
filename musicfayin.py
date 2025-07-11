@@ -25,9 +25,10 @@ SONG_GEN_DIR = PROJECT_ROOT / "SongGeneration"
  
 def get_absolute_path(relative_path: str) -> Path:
     """将相对路径转换为绝对路径"""
+    path = Path(relative_path)
     if relative_path.startswith("ckpt/"):
-        return SONG_GEN_DIR / relative_path
-    return PROJECT_ROOT / relative_path
+        return SONG_GEN_DIR / path.relative_to("ckpt/")
+    return PROJECT_ROOT / path
 
 # 常量定义
 DEEPSEEK_API_KEY = st.secrets['DEEPSEEK_API_KEY'] # 换成你自己的API KEY
@@ -730,13 +731,17 @@ def save_jsonl(entries: List[Dict], filename: str) -> str:
     
     with open(filepath, "w", encoding="utf-8") as f:
         for entry in entries:
-            f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+            # 确保所有值都是可序列化的
+            serializable_entry = {
+                k: str(v) if not isinstance(v, (str, int, float, bool, list, dict)) else v
+                for k, v in entry.items()
+            }
+            f.write(json.dumps(serializable_entry, ensure_ascii=False) + "\n")
     
     return str(filepath)
 
 def run_music_generation(jsonl_path: str, output_dir: str = "output"):
-    """执行音乐生成命令（根据显存自动选择脚本）
-    日志直接输出到终端，完成后在界面显示结果"""
+    """执行音乐生成命令（日志直接输出到终端）"""
     # 获取显存信息
     gpu_info = get_gpu_memory()
     
@@ -761,43 +766,38 @@ def run_music_generation(jsonl_path: str, output_dir: str = "output"):
     # 显示执行命令
     st.code(" ".join(cmd), language="bash")
     
-    # 创建进度占位符
-    progress_bar = st.progress(0)
+    # 显示状态信息
     status_text = st.empty()
     status_text.text("音乐生成中，请查看终端输出...")
     
     # 执行命令 - 直接输出到终端
     process = subprocess.Popen(
         cmd,
-        cwd=str(SONG_GEN_DIR)  # 在SongGeneration目录下执行
+        cwd=str(SONG_GEN_DIR),
+        stdout=sys.stdout,  # 直接输出到终端
+        stderr=sys.stderr,  # 错误也输出到终端
+        universal_newlines=True
     )
     
     # 等待命令完成
     return_code = process.wait()
+    status_text.empty()  # 清除状态信息
     
     # 检查是否有生成的音频文件
     audio_files = list(Path(get_absolute_path(output_dir)).glob("audios/*.flac"))
     
     # 处理结果
-    if audio_files:  # 如果有音频文件生成
-        status_text.empty()
+    if audio_files:
         st.success("🎵 音乐生成完成！")
         display_generated_files(output_dir)
         
         if return_code != 0:
             st.warning(f"⚠️ 生成过程出现警告 (返回码: {return_code})")
     else:
-        status_text.empty()
         if return_code == 0:
             st.error("❌ 生成过程完成但未找到音频文件")
         else:
             st.error(f"❌ 生成失败 (返回码: {return_code})")
-        
-        # 显示最后的日志文件（如果有）
-        log_file = Path(get_absolute_path(output_dir)) / "generation.log"
-        if log_file.exists():
-            with open(log_file, "r") as f:
-                st.text_area("最后日志输出", f.read(), height=200)
 
 
 def display_generated_files(output_dir: str):
@@ -1125,23 +1125,26 @@ def setup_ui():
         
         prefix = st.text_input("ID前缀", "sample_01")
         
+        # 设置默认路径或用户选择的路径
+        prompt_audio_path = "input/sample_prompt_audio.wav"  # 默认值
+        
         # 添加音频文件选择器
         uploaded_file = st.file_uploader(
             "选择音频提示文件（默认：input/sample_prompt_audio.wav）",
             type=["wav","mp3","flac"],
             help="请选择用于音频提示的.wav文件"
         )
-        # 设置默认路径或用户选择的路径
-        prompt_audio_path = "input/sample_prompt_audio.wav"  # 默认值
+
         if uploaded_file is not None:
-            # 保存上传的文件到input目录
             input_dir = get_absolute_path("input")
-            input_dir.mkdir(exist_ok=True)
+            input_dir.mkdir(parents=True, exist_ok=True)
             prompt_audio_path = input_dir / uploaded_file.name
             with open(prompt_audio_path, "wb") as f:
                 f.write(uploaded_file.getbuffer())
             st.success(f"文件已保存: {prompt_audio_path}")
-        
+            prompt_audio_path = str(prompt_audio_path)  # 转换为字符串供后续使用
+
+                
         if st.button("生成JSONL配置"):
             entries = generate_jsonl_entries(
                 prefix,
@@ -1170,11 +1173,11 @@ def setup_ui():
         try:
             # 验证模型文件是否存在
             required_files = [
-                "SongGeneration/ckpt/songgeneration_base/config.yaml",
-                "SongGeneration/ckpt/songgeneration_base/model.pt",
-                "SongGeneration/ckpt/model_1rvq/model_2_fixed.safetensors",
-                "SongGeneration/ckpt/model_septoken/model_2.safetensors",
-                "SongGeneration/ckpt/prompt.pt"
+                SONG_GEN_DIR / "ckpt/songgeneration_base/config.yaml",
+                SONG_GEN_DIR / "ckpt/songgeneration_base/model.pt",
+                SONG_GEN_DIR / "ckpt/model_1rvq/model_2_fixed.safetensors",
+                SONG_GEN_DIR / "ckpt/model_septoken/model_2.safetensors",
+                SONG_GEN_DIR / "ckpt/prompt.pt"
             ]
             
             missing_files = [f for f in required_files if not os.path.exists(f)]
