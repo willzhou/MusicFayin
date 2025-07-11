@@ -89,51 +89,61 @@ MUSIC_SECTION_TEMPLATES = {
     "intro-short": {
         "description": "前奏超短版(0-10秒)",
         "duration": "5-10秒",
+        "duration_avg": 7,  # (5+10)/2 ≈ 7.5 取整
         "lyric_required": False
     },
     "intro-medium": {
         "description": "前奏中等版(10-20秒)",
         "duration": "15-20秒",
+        "duration_avg": 17,  # (15+20)/2 = 17.5 取整
         "lyric_required": False
     },
     "intro-long": {
         "description": "前奏完整版(20-30秒)",
         "duration": "20-30秒",
+        "duration_avg": 25,  # (20+30)/2 = 25
         "lyric_required": False
     },
     "outro-short": {
         "description": "尾奏超短版(0-10秒)", 
         "duration": "5-10秒",
+        "duration_avg": 7,
         "lyric_required": False
     },
     "outro-medium": {
         "description": "尾奏中等版(10-20秒)",
         "duration": "15-20秒",
+        "duration_avg": 17,
         "lyric_required": False
     },
     "outro-long": {
         "description": "尾奏完整版(20-30秒)",
         "duration": "20-30秒",
+        "duration_avg": 25,
         "lyric_required": False
     },
     "inst-short": {
         "description": "间奏短版(5-10秒)",
         "duration": "5-10秒",
+        "duration_avg": 7,
         "lyric_required": False
     },
     "inst-medium": {
         "description": "间奏中等版(10-20秒)",
         "duration": "15-20秒",
+        "duration_avg": 17,
         "lyric_required": False
     },
     "inst-long": {
         "description": "间奏完整版(20-30秒)",
         "duration": "20-30秒",
+        "duration_avg": 25,
         "lyric_required": False
     },
     "silence": {
         "description": "空白停顿(1-3秒)",
         "duration": "1-3秒",
+        "duration_avg": 2,  # 取中间值
         "lyric_required": False
     },
     
@@ -141,18 +151,21 @@ MUSIC_SECTION_TEMPLATES = {
     "verse": {
         "description": "主歌段落(20-30秒)",
         "duration": "20-30秒",
+        "duration_avg": 25,
         "lyric_required": True,
         "lines": "4-8行"
     },
     "chorus": {
         "description": "副歌(高潮段落)", 
         "duration": "20-30秒",
+        "duration_avg": 25,
         "lyric_required": True,
         "lines": "4-8行"
     },
     "bridge": {
         "description": "过渡桥段",
         "duration": "15-25秒",
+        "duration_avg": 20,  # (15+25)/2 = 20
         "lyric_required": True,
         "lines": "2-4行"
     }
@@ -510,6 +523,161 @@ def analyze_lyrics(lyrics: str) -> Dict[str, str]:
 # ========================
 # 辅助函数
 # ========================
+def format_section_timing(sections: List[str], timings: Dict[str, int]) -> str:
+    """格式化段落时长信息"""
+    return "\n".join(
+        f"- [{sec}]: {timings[sec]}秒" + 
+        f" ({MUSIC_SECTION_TEMPLATES[sec]['description']})" 
+        for sec in sections
+    )
+
+def calc_lines_from_seconds(seconds: int) -> str:
+    """根据秒数计算建议行数"""
+    min_lines = max(2, seconds // 5)  # 每行最多5秒
+    max_lines = max(4, seconds // 3)  # 每行最少3秒
+    return f"{min_lines}-{max_lines}行"
+
+def parse_duration_to_seconds(duration_str: str) -> int:
+    """将中文时长字符串转换为秒数"""
+    try:
+        # 处理"X分Y秒"格式
+        if "分" in duration_str and "秒" in duration_str:
+            minutes = int(re.search(r"(\d+)分", duration_str).group(1))
+            seconds = int(re.search(r"(\d+)秒", duration_str).group(1))
+            return minutes * 60 + seconds
+        
+        # 处理只有分钟的格式
+        if "分" in duration_str:
+            return int(duration_str.replace("分", "")) * 60
+        
+        # 处理纯秒数格式
+        if "秒" in duration_str:
+            return int(duration_str.replace("秒", ""))
+        
+        # 默认处理纯数字
+        return int(duration_str)
+    except Exception as e:
+        raise ValueError(f"无效的时长格式: '{duration_str}'") from e
+
+def calculate_section_timings(sections: List[str], total_seconds: int) -> Dict[str, int]:
+    """计算每个段落的时长分配"""
+    # 1. 验证所有段落是否定义
+    for section in sections:
+        if section not in MUSIC_SECTION_TEMPLATES:
+            raise ValueError(f"未定义的段落类型: {section}")
+    
+    # 2. 计算总基准时长
+    total_baseline = sum(
+        MUSIC_SECTION_TEMPLATES[sec]["duration_avg"] 
+        for sec in sections
+    )
+    
+    # 3. 检查是否包含bridge段落
+    has_bridge = "bridge" in sections
+    
+    # 4. 分配时长
+    section_timings = {}
+    remaining_seconds = total_seconds
+    
+    # 先分配verse和chorus段落
+    for section in [sec for sec in sections if sec in ["verse", "chorus"]]:
+        allocated = int(MUSIC_SECTION_TEMPLATES[section]["duration_avg"] * total_seconds / total_baseline)
+        allocated = max(15, min(45, allocated))  # 限制15-45秒
+        section_timings[section] = allocated
+        remaining_seconds -= allocated
+    
+    # 如果有bridge段落，分配时长
+    if has_bridge:
+        bridge_seconds = int(MUSIC_SECTION_TEMPLATES["bridge"]["duration_avg"] * total_seconds / total_baseline)
+        bridge_seconds = max(10, min(30, bridge_seconds))  # 限制10-30秒
+        section_timings["bridge"] = bridge_seconds
+        remaining_seconds -= bridge_seconds
+    
+    # 分配器乐段落
+    instrumental_sections = [sec for sec in sections if sec not in ["verse", "chorus", "bridge"]]
+    for section in instrumental_sections:
+        allocated = int(MUSIC_SECTION_TEMPLATES[section]["duration_avg"] * total_seconds / total_baseline)
+        allocated = max(5, min(30, allocated))  # 限制5-30秒
+        section_timings[section] = allocated
+        remaining_seconds -= allocated
+    
+    # 处理剩余时间（加到最后一个段落）
+    if remaining_seconds > 0:
+        last_section = sections[-1]
+        section_timings[last_section] += remaining_seconds
+    
+    return section_timings
+
+
+def generate_lyrics_with_duration(
+    lyric_prompt: str,
+    template: Dict[str, Any],
+    song_length: str
+) -> Optional[str]:
+    """生成带时长控制的歌词"""
+    try:
+        # 解析总时长
+        total_seconds = parse_duration_to_seconds(song_length)
+        
+        # 计算段落时长
+        section_timings = calculate_section_timings(template["sections"], total_seconds)
+        
+        # 构建提示词
+        prompt_lines = [
+            f"请根据以下要求生成一首中文歌曲的完整歌词：\n"
+            f"主题：{lyric_prompt}",
+            f"""歌曲结构：
+            {", ".join([f"[{section}]" for section in template["sections"]])}
+            具体要求：
+            1. 严格按照给定的结构标签分段
+            2. 器乐段落([intro-*]/[outro-*])不需要填歌词
+            3. 人声段落([verse]/[chorus]/[bridge])必须包含歌词
+            4. 主歌([verse])每段4-8行
+            5. 副歌([chorus])要突出高潮部分
+            6. 桥段([bridge])2-4行
+            7. 整体要有押韵和节奏感
+            8. 不要包含歌曲标题
+            9. 不要包含韵脚分析等额外说明
+            返回格式示例：
+            [intro-medium]
+            [verse]
+            第一行歌词
+            第二行歌词
+            ...
+            [chorus]
+            副歌第一行
+            副歌第二行
+            ...""",
+            f"总时长：{song_length} ({total_seconds}秒)",
+            "段落时长分配："
+        ]
+        
+        # 添加各段落信息
+        for section in template["sections"]:
+            desc = MUSIC_SECTION_TEMPLATES[section]["description"]
+            prompt_lines.append(f"- [{section}]: {section_timings[section]}秒 ({desc})")
+        
+        # 添加歌词行数要求
+        prompt_lines.append("\n歌词要求：")
+        prompt_lines.append(f"1. 主歌([verse]): 每段{calc_lines_from_seconds(section_timings['verse'])}行")
+        prompt_lines.append(f"2. 副歌([chorus]): 每段{calc_lines_from_seconds(section_timings['chorus'])}行")
+        
+        # 只有模板包含bridge时才添加bridge要求
+        if "bridge" in template["sections"]:
+            prompt_lines.append(f"3. 桥段([bridge]): {calc_lines_from_seconds(section_timings['bridge'])}行")
+        
+        prompt_lines.append("4. 器乐段落不需要歌词")
+        prompt_lines.append("5. 注意押韵和节奏")
+        
+        prompt = "\n".join(prompt_lines)
+        
+        return call_deepseek_api(prompt)
+    except Exception as e:
+        st.error(f"歌词生成失败: {str(e)}")
+        return None
+
+    
+
 def generate_jsonl_entries(prefix: str, lyrics: str, analysis: Dict[str, Any], prompt_audio_path: str = "input/sample_prompt_audio.wav") -> List[Dict]:
     """生成所有JSONL条目"""
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -694,6 +862,101 @@ def replace_chinese_punctuation(text):
     # 合并并标准化空格
     return re.sub(r'\s+', ' ', "".join(result)).strip()
 
+
+import plotly.express as px
+def display_duration_breakdown(sections: List[str], total_seconds: int):
+    """显示时长分配饼图"""
+    timings = calculate_section_timings(sections, total_seconds)
+    
+    fig = px.pie(
+        names=[f"[{sec}]" for sec in sections],
+        values=[timings[sec] for sec in sections],
+        title=f"时长分配 (总计: {total_seconds}秒)",
+        color_discrete_sequence=px.colors.sequential.RdBu
+    )
+    st.plotly_chart(fig, use_container_width=True)
+
+
+def get_gpu_memory():
+    """获取GPU显存信息（单位：GB）"""
+    try:
+        if torch.cuda.is_available():
+            device = torch.cuda.current_device()
+            total_memory = torch.cuda.get_device_properties(device).total_memory / (1024**3)  # 转换为GB
+            used_memory = torch.cuda.memory_allocated(device) / (1024**3)
+            free_memory = total_memory - used_memory
+            return {
+                "total": total_memory,
+                "used": used_memory,
+                "free": free_memory
+            }
+        return None
+    except Exception as e:
+        st.warning(f"无法获取GPU显存信息: {str(e)}")
+        return None
+
+def run_music_generation(jsonl_path: str, output_dir: str = "output"):
+    """执行音乐生成命令（根据显存自动选择脚本）"""
+    # 获取显存信息
+    gpu_info = get_gpu_memory()
+    
+    # 默认使用低内存模式
+    script = "generate_lowmem.sh"
+    
+    if gpu_info and gpu_info["total"] >= 30:  # 显存≥30GB时使用标准脚本
+        script = "generate.sh"
+        st.info(f"检测到充足显存 ({gpu_info['total']:.1f}GB)，将使用标准生成模式")
+    else:
+        st.warning(f"显存不足30GB ({gpu_info['total']:.1f}GB if available)，使用低内存模式")
+    
+    cmd = [
+        "bash",
+        script,  # 根据显存自动选择的脚本
+        "ckpt/songgeneration_base/",
+        jsonl_path,
+        output_dir
+    ]
+    
+    # 显示执行命令
+    st.code(" ".join(cmd), language="bash")
+    
+    # 创建进度显示
+    progress_bar = st.progress(0)
+    status_text = st.empty()
+    status_text.text("音乐生成中...")
+    output_container = st.expander("生成日志", expanded=True)
+    
+    # 执行命令
+    process = subprocess.Popen(
+        cmd,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        universal_newlines=True
+    )
+    
+    # 实时显示输出
+    full_output = ""
+    while True:
+        line = process.stdout.readline()
+        if line == '' and process.poll() is not None:
+            break
+        if line:
+            full_output += line
+            output_container.code(full_output, language="bash")
+            
+            # 更新进度
+            if "Generating:" in line:
+                progress_bar.progress(min(100, progress_bar.progress_value + 20))
+    
+    # 处理结果
+    if process.returncode == 0:
+        st.success("🎵 音乐生成完成！")
+        display_generated_files(output_dir)
+    else:
+        st.error(f"❌ 生成失败 (返回码: {process.returncode})")
+        st.text(full_output)
+
+
 # 典型结构模板
 # ========================
 # Streamlit 界面
@@ -709,7 +972,24 @@ def setup_ui():
     col1, col2 = st.columns([3, 2])
     
     with col1:
-        lyric_prompt = st.text_area("输入歌词主题", "孩子们的三色枣糕")
+        lyric_prompt = st.text_area("输入歌词主题", "如果能重来")
+        
+        # 新增时长选择器
+        length_min = st.slider(
+            "歌曲时长（分钟）", 
+            min_value=1, 
+            max_value=10, 
+            value=3,
+            step=1
+        )
+        length_sec = st.slider(
+            "歌曲时长（秒）", 
+            min_value=0, 
+            max_value=59, 
+            value=30,
+            step=5
+        )
+        song_length = f"{length_min}分{length_sec}秒"
         
         # 结构模板选择
         selected_template = st.selectbox(
@@ -751,43 +1031,53 @@ def setup_ui():
         """)
     # 生成歌词按钮
     if st.button("生成歌词"):
-        with st.spinner("正在生成歌词..."):
-            # 获取选中的模板结构
+        with st.spinner(f"正在生成{song_length}的歌词..."):
             template = STRUCTURE_TEMPLATES[selected_template]
+            lyrics = generate_lyrics_with_duration(
+                lyric_prompt=lyric_prompt,
+                template=template,
+                song_length=song_length
+            )
             
-            # 构建详细的提示词
-            prompt = f"""请根据以下要求生成一首中文歌曲的完整歌词：
+            # # 构建详细的提示词
+            # prompt = f"""请根据以下要求生成一首中文歌曲的完整歌词：
                         
-            主题：{lyric_prompt}
-            歌曲结构：
-            {", ".join([f"[{section}]" for section in template["sections"]])}
-            具体要求：
-            1. 严格按照给定的结构标签分段
-            2. 器乐段落([intro-*]/[outro-*])不需要填歌词
-            3. 人声段落([verse]/[chorus]/[bridge])必须包含歌词
-            4. 主歌([verse])每段4-8行
-            5. 副歌([chorus])要突出高潮部分
-            6. 桥段([bridge])2-4行
-            7. 整体要有押韵和节奏感
-            8. 不要包含歌曲标题
-            9. 不要包含韵脚分析等额外说明
-            返回格式示例：
-            [intro-medium]
-            [verse]
-            第一行歌词
-            第二行歌词
-            ...
-            [chorus]
-            副歌第一行
-            副歌第二行
-            ...
-            """
-            lyrics = call_deepseek_api(prompt)
+            # 主题：{lyric_prompt}
+            # 歌曲结构：
+            # {", ".join([f"[{section}]" for section in template["sections"]])}
+            # 具体要求：
+            # 1. 严格按照给定的结构标签分段
+            # 2. 器乐段落([intro-*]/[outro-*])不需要填歌词
+            # 3. 人声段落([verse]/[chorus]/[bridge])必须包含歌词
+            # 4. 主歌([verse])每段4-8行
+            # 5. 副歌([chorus])要突出高潮部分
+            # 6. 桥段([bridge])2-4行
+            # 7. 整体要有押韵和节奏感
+            # 8. 不要包含歌曲标题
+            # 9. 不要包含韵脚分析等额外说明
+            # 返回格式示例：
+            # [intro-medium]
+            # [verse]
+            # 第一行歌词
+            # 第二行歌词
+            # ...
+            # [chorus]
+            # 副歌第一行
+            # 副歌第二行
+            # ...
+            # """
+            # lyrics = call_deepseek_api(prompt)
+
             if lyrics:
                 cleaned_lyrics = clean_generated_lyrics(lyrics)
                 st.session_state.app_state['lyrics'] = cleaned_lyrics
-                st.text_area("生成的歌词", cleaned_lyrics, height=400)
+                st.text_area("生成的歌词", cleaned_lyrics, height=200)
                 
+                # 显示时长分配
+                total_seconds = parse_duration_to_seconds(song_length)
+                st.subheader("时长分配详情")
+                display_duration_breakdown(template["sections"], total_seconds)
+
                 # 自动分析歌词参数
                 with st.spinner("正在分析歌词特征..."):
                     analysis = analyze_lyrics(cleaned_lyrics)
@@ -933,19 +1223,26 @@ def setup_ui():
             st.success("✅ 模型文件验证通过")
             
             if st.button("运行音乐生成"):
-                # 准备生成命令
+                # # 准备生成命令
                 jsonl_path = st.session_state.app_state['generated_jsonl']
-                cmd = [
-                    "bash", 
-                    "generate_lowmem.sh",
-                    "ckpt/songgeneration_base/",
-                    jsonl_path,
-                    output_dir
-                ]
+                # cmd = [
+                #     "bash", 
+                #     "generate_lowmem.sh",
+                #     "ckpt/songgeneration_base/",
+                #     jsonl_path,
+                #     output_dir
+                # ]
 
-                # 显示执行的命令
-                st.code(" ".join(cmd), language="bash")
+                # # 显示执行的命令
+                # st.code(" ".join(cmd), language="bash")
                 
+                gpu_info = get_gpu_memory()
+                if gpu_info:
+                    st.info(f"当前GPU显存: {gpu_info['total']:.1f}GB (已用: {gpu_info['used']:.1f}GB)")
+                
+                # 调用修改后的run_music_generation函数
+                run_music_generation(jsonl_path, output_dir)
+
                 # 创建进度条
                 progress_bar = st.progress(0)
                 status_text = st.empty()
@@ -1057,25 +1354,18 @@ def show_system_monitor():
                      f"{mem.used/1024/1024:.1f}MB / {mem.total/1024/1024:.1f}MB",
                      f"{mem.percent}%")
     
-    # 磁盘空间
-    disk = psutil.disk_usage('/')
-    st.sidebar.metric("磁盘空间", 
-                     f"{disk.used/1024/1024:.1f}MB / {disk.total/1024/1024:.1f}MB",
-                     f"{disk.percent}%")
-    
     # GPU信息（如果可用）
     if torch.cuda.is_available():
-        st.sidebar.subheader("GPU信息")
-        for i in range(torch.cuda.device_count()):
-            mem = torch.cuda.mem_get_info(i)
-            total = mem[1] / 1024**3
-            free = mem[0] / 1024**3
-            used = total - free
+        gpu_info = get_gpu_memory()
+        if gpu_info:
+            st.sidebar.subheader("GPU显存信息")
             st.sidebar.metric(
-                f"GPU {i} ({torch.cuda.get_device_name(i)})",
-                f"{used:.1f}GB / {total:.1f}GB",
-                f"{used/total*100:.1f}%"
+                "总显存", 
+                f"{gpu_info['total']:.1f} GB",
+                f"已用: {gpu_info['used']:.1f} GB"
             )
+            st.sidebar.progress(gpu_info['used'] / gpu_info['total'])
+
 
 # ========================
 # 主程序
@@ -1083,7 +1373,7 @@ def show_system_monitor():
 if __name__ == "__main__":
     os.environ.update({
         'USER': 'root',
-        'PYTHONDONTWRITEBYTECODE': '1',
+        'PYTHONDONTWRITEBYTECODE': '0',
         'TRANSFORMERS_CACHE': str(Path.cwd() / "third_party/hub"),
         'NCCL_HOME': '/usr/local/tccl',
         'PYTHONPATH': ":".join([
