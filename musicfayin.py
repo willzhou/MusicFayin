@@ -17,6 +17,8 @@ from pathlib import Path
 import re
 import glob
 
+import threading
+
 # 在文件顶部添加项目根目录定义
 PROJECT_ROOT = Path(__file__).parent  # 假设musicfayin.py现在放在SongGeneration的父目录
 SONG_GEN_DIR = PROJECT_ROOT / "SongGeneration"
@@ -733,7 +735,8 @@ def save_jsonl(entries: List[Dict], filename: str) -> str:
     return str(filepath)
 
 def run_music_generation(jsonl_path: str, output_dir: str = "output"):
-    """执行音乐生成命令（根据显存自动选择脚本）"""
+    """执行音乐生成命令（根据显存自动选择脚本）
+    日志直接输出到终端，完成后在界面显示结果"""
     # 获取显存信息
     gpu_info = get_gpu_memory()
     
@@ -758,41 +761,44 @@ def run_music_generation(jsonl_path: str, output_dir: str = "output"):
     # 显示执行命令
     st.code(" ".join(cmd), language="bash")
     
-    # 创建进度显示
+    # 创建进度占位符
     progress_bar = st.progress(0)
     status_text = st.empty()
-    output_container = st.expander("生成日志", expanded=True)
+    status_text.text("音乐生成中，请查看终端输出...")
     
-    # 执行命令
+    # 执行命令 - 直接输出到终端
     process = subprocess.Popen(
         cmd,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        universal_newlines=True,
         cwd=str(SONG_GEN_DIR)  # 在SongGeneration目录下执行
     )
     
-    # 实时显示输出
-    full_output = ""
-    while True:
-        line = process.stdout.readline()
-        if line == '' and process.poll() is not None:
-            break
-        if line:
-            full_output += line
-            output_container.code(full_output, language="bash")
-            
-            # 更新进度
-            if "Generating:" in line:
-                progress_bar.progress(min(100, progress_bar.progress_value + 20))
+    # 等待命令完成
+    return_code = process.wait()
+    
+    # 检查是否有生成的音频文件
+    audio_files = list(Path(get_absolute_path(output_dir)).glob("audios/*.flac"))
     
     # 处理结果
-    if process.returncode == 0:
+    if audio_files:  # 如果有音频文件生成
+        status_text.empty()
         st.success("🎵 音乐生成完成！")
         display_generated_files(output_dir)
+        
+        if return_code != 0:
+            st.warning(f"⚠️ 生成过程出现警告 (返回码: {return_code})")
     else:
-        st.error(f"❌ 生成失败 (返回码: {process.returncode})")
-        st.text(full_output)
+        status_text.empty()
+        if return_code == 0:
+            st.error("❌ 生成过程完成但未找到音频文件")
+        else:
+            st.error(f"❌ 生成失败 (返回码: {return_code})")
+        
+        # 显示最后的日志文件（如果有）
+        log_file = Path(get_absolute_path(output_dir)) / "generation.log"
+        if log_file.exists():
+            with open(log_file, "r") as f:
+                st.text_area("最后日志输出", f.read(), height=200)
+
 
 def display_generated_files(output_dir: str):
     """显示生成的音乐文件"""
