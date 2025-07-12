@@ -19,6 +19,12 @@ MusicFayIn is an advanced AI-powered music generation system that creates comple
  ![文件上传](https://raw.githubusercontent.com/willzhou/MusicFayIn/main/assets/lyrics.png)
  ![识别结果](https://raw.githubusercontent.com/willzhou/MusicFayIn/main/assets/generation.png)
 
+### Sample Download
+
+[下载音频 (noprompt.flac)](https://raw.githubusercontent.com/willzhou/MusicFayIn/main/assets/sample_01_noprompt_20250711_190348.flac)
+
+[下载音频 (autoprompt.flac)](https://raw.githubusercontent.com/willzhou/MusicFayIn/main/assets/sample_01_autoprompt_20250711_190348.flac)
+
 ## Installation
 
 1. Install core dependencies (requires SongGeneration)
