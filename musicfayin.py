@@ -1011,35 +1011,6 @@ def setup_ui():
                 template=template,
                 song_length=song_length
             )
-            
-            # # 构建详细的提示词
-            # prompt = f"""请根据以下要求生成一首中文歌曲的完整歌词：
-                        
-            # 主题：{lyric_prompt}
-            # 歌曲结构：
-            # {", ".join([f"[{section}]" for section in template["sections"]])}
-            # 具体要求：
-            # 1. 严格按照给定的结构标签分段
-            # 2. 器乐段落([intro-*]/[outro-*])不需要填歌词
-            # 3. 人声段落([verse]/[chorus]/[bridge])必须包含歌词
-            # 4. 主歌([verse])每段4-8行
-            # 5. 副歌([chorus])要突出高潮部分
-            # 6. 桥段([bridge])2-4行
-            # 7. 整体要有押韵和节奏感
-            # 8. 不要包含歌曲标题
-            # 9. 不要包含韵脚分析等额外说明
-            # 返回格式示例：
-            # [intro-medium]
-            # [verse]
-            # 第一行歌词
-            # 第二行歌词
-            # ...
-            # [chorus]
-            # 副歌第一行
-            # 副歌第二行
-            # ...
-            # """
-            # lyrics = call_deepseek_api(prompt)
 
             if lyrics:
                 cleaned_lyrics = clean_generated_lyrics(lyrics)
@@ -1202,92 +1173,17 @@ def setup_ui():
             if st.button("运行音乐生成"):
                 # # 准备生成命令
                 jsonl_path = st.session_state.app_state['generated_jsonl']
-                # cmd = [
-                #     "bash", 
-                #     "generate_lowmem.sh",
-                #     "ckpt/songgeneration_base/",
-                #     jsonl_path,
-                #     output_dir
-                # ]
-
-                # # 显示执行的命令
-                # st.code(" ".join(cmd), language="bash")
                 
                 gpu_info = get_gpu_memory()
                 if gpu_info:
                     st.info(f"当前GPU显存: {gpu_info['total']:.1f}GB (已用: {gpu_info['used']:.1f}GB)")
                 
-                # 调用修改后的run_music_generation函数
                 run_music_generation(jsonl_path, output_dir)
 
                 # 创建进度条
                 progress_bar = st.progress(0)
                 status_text = st.empty()
                 status_text.text("音乐生成中...")
-                
-                try:
-                    # 执行生成命令，将输出重定向到终端
-                    process = subprocess.Popen(
-                        cmd,
-                        stdout=sys.stdout,  # 输出到终端
-                        stderr=sys.stderr,  # 错误输出到终端
-                        universal_newlines=True
-                    )
-                    
-                    # 简单进度模拟
-                    for i in range(10):
-                        time.sleep(0.5)  # 模拟处理时间
-                        progress_bar.progress((i + 1) * 10)
-                    
-                    # 等待命令完成
-                    return_code = process.wait()
-                    
-                    # 无论返回码如何，都检查是否有音频文件生成
-                    audio_files = glob.glob(f"{output_dir}/audios/*.flac")
-                    
-                    if audio_files:
-                        status_text.empty()
-                        st.subheader("生成的音乐文件")
-                        for audio_file in sorted(audio_files):
-                            st.audio(audio_file)
-                            st.download_button(
-                                f"下载 {os.path.basename(audio_file)}",
-                                data=open(audio_file, "rb").read(),
-                                file_name=os.path.basename(audio_file),
-                                mime="audio/flac"
-                            )
-                        
-                        # 即使有文件生成，也根据返回码显示不同状态
-                        if return_code == 0:
-                            st.success("🎵 音乐生成完成！")
-                        else:
-                            st.warning(f"⚠️ 生成过程出现错误 (返回码: {return_code})，但已生成部分音频文件")
-                            st.info("请查看终端输出获取详细错误信息")
-                    else:
-                        status_text.empty()
-                        if return_code == 0:
-                            st.error("❌ 生成过程完成但未找到音频文件")
-                        else:
-                            st.error(f"❌ 生成失败 (返回码: {return_code})")
-                        st.info("请查看终端输出获取详细错误信息")
-                        
-                except Exception as e:
-                    status_text.empty()
-                    st.error(f"❌ 生成过程中发生错误: {str(e)}")
-                    st.info("请查看终端输出获取详细错误信息")
-                    
-                    # 即使出错也检查是否有部分文件生成
-                    audio_files = glob.glob(f"{output_dir}/audios/*.flac")
-                    if audio_files:
-                        st.subheader("部分生成的音乐文件")
-                        for audio_file in sorted(audio_files):
-                            st.audio(audio_file)
-                            st.download_button(
-                                f"下载 {os.path.basename(audio_file)}",
-                                data=open(audio_file, "rb").read(),
-                                file_name=os.path.basename(audio_file),
-                                mime="audio/flac"
-                            )
                                 
         except FileNotFoundError as e:
             st.error(str(e))
@@ -1349,7 +1245,6 @@ def show_system_monitor():
 # ========================
 if __name__ == "__main__":
     os.environ.update({
-        'USER': 'root',
         'PYTHONDONTWRITEBYTECODE': '0',
         'TRANSFORMERS_CACHE': str(SONG_GEN_DIR / "third_party/hub"),
         'NCCL_HOME': '/usr/local/tccl',
