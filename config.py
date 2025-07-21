@@ -192,7 +192,7 @@ STRUCTURE_TEMPLATES = {
     },
     "product_jingle": {
         "name": "产品广告旋律",
-        "sections": ["intro-short", "verse", "chorus", "silence", "chorus"],
+        "sections": ["intro-short", "verse", "chorus", "silence", "chorus", "outro-short"],
         "duration": "20-30秒",
         "use_case": "广告口号+品牌记忆点"
     },
@@ -206,7 +206,7 @@ STRUCTURE_TEMPLATES = {
     },
     "tiktok_pop": {
         "name": "短视频平台流行结构",
-        "sections": ["intro-short", "chorus", "verse", "chorus", "inst-short", "chorus"],
+        "sections": ["intro-short", "chorus", "verse", "chorus", "inst-short", "chorus", "outro-short"],
         "duration": "约2分30秒",
         "feature": "副歌前置+重复高潮"
     },
@@ -248,7 +248,7 @@ STRUCTURE_TEMPLATES = {
     },
     "game_battle": {
         "name": "游戏战斗音乐",
-        "sections": ["intro-short", "inst-medium", "verse", "inst-long", "chorus", "inst-long"],
+        "sections": ["intro-short", "inst-medium", "verse", "inst-long", "chorus", "inst-long", "outro-short"],
         "duration": "循环结构",
         "feature": "无尾奏方便循环播放"
     },

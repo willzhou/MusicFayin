@@ -7,7 +7,6 @@ import requests
 from datetime import datetime
 import os
 import subprocess
-import time
 import torch
 
 from typing import Dict, Any, List, Tuple, Optional
@@ -15,12 +14,14 @@ import psutil
 import sys
 from pathlib import Path
 import re
-import glob
 
-import threading
-from .config import DEEPSEEK_API_KEY, DEEPSEEK_URL
-from .config import EMOTIONS, SINGER_GENDERS, GENRES, INSTRUMENTATIONS, TIMBRES, AUTO_PROMPT_TYPES
-from .config import MUSIC_SECTION_TEMPLATES, STRUCTURE_TEMPLATES, SECTION_DEFINITIONS
+# import glob
+# import time
+# import threading
+# from .config import DEEPSEEK_API_KEY, DEEPSEEK_URL
+
+from config import EMOTIONS, SINGER_GENDERS, GENRES, INSTRUMENTATIONS, TIMBRES, AUTO_PROMPT_TYPES
+from config import MUSIC_SECTION_TEMPLATES, STRUCTURE_TEMPLATES, SECTION_DEFINITIONS
 
 
 # 在文件顶部添加项目根目录定义
@@ -399,72 +400,107 @@ def save_jsonl(entries: List[Dict], filename: str) -> str:
     
     return str(filepath)
 
-def run_music_generation(jsonl_path: str, output_dir: str = "output", force_standard: bool = False):
-    """执行音乐生成命令（日志直接输出到终端）
+# 在全局变量或session_state中添加运行状态标志
+if 'running_process' not in st.session_state:
+    st.session_state.running_process = None
+
+def run_music_generation(jsonl_path: str, output_dir: str = "output", 
+                        force_standard: bool = False, gen_type: str = ""):
+    """执行音乐生成命令（带防止重复运行机制）"""
     
-    Args:
-        jsonl_path: JSONL配置文件路径
-        output_dir: 输出目录
-        force_standard: 是否强制使用标准模式(generate.sh)
-    """
-    # 获取显存信息
-    gpu_info = get_gpu_memory()
+    # 检查是否已有进程在运行
+    if st.session_state.running_process is not None:
+        st.warning("⚠️ 已有生成任务正在运行，请等待完成")
+        return
     
-    # 决定使用哪个脚本
-    if force_standard:
-        script = "generate.sh"
-        st.info("已强制使用标准生成模式(generate.sh)")
-    elif gpu_info and gpu_info["total"] >= 30:
-        script = "generate.sh"
-        st.info(f"检测到充足显存 ({gpu_info['total']:.1f}GB)，将使用标准生成模式")
-    else:
-        script = "generate_lowmem.sh"
-        st.warning(f"显存不足30GB ({gpu_info['total']:.1f}GB if available)，使用低显存模式")
-    
-    # 使用绝对路径
-    cmd = [
-        "bash",
-        str(SONG_GEN_DIR / script),
-        str(SONG_GEN_DIR / "ckpt/songgeneration_base/"),
-        str(get_absolute_path(jsonl_path)),
-        str(get_absolute_path(output_dir))
-    ]
-    
-    # 显示执行命令
-    st.code(" ".join(cmd), language="bash")
-    
-    # 显示状态信息
-    status_text = st.empty()
-    status_text.text("音乐生成中，请查看终端输出...")
-    
-    # 执行命令 - 直接输出到终端
-    process = subprocess.Popen(
-        cmd,
-        cwd=str(SONG_GEN_DIR),
-        stdout=sys.stdout,  # 直接输出到终端
-        stderr=sys.stderr,  # 错误也输出到终端
-        universal_newlines=True
-    )
-    
-    # 等待命令完成
-    return_code = process.wait()
-    status_text.empty()  # 清除状态信息
-    
-    # 检查是否有生成的音频文件
-    audio_files = list(Path(get_absolute_path(output_dir)).glob("audios/*.flac"))
-    
-    # 处理结果
-    if audio_files:
-        st.success("🎵 音乐生成完成！")
-        display_generated_files(output_dir)
+    try:
+        # 获取显存信息
+        gpu_info = get_gpu_memory()
         
-        if return_code != 0:
-            st.warning(f"⚠️ 生成过程出现警告 (返回码: {return_code})")
-    else:
-        if return_code == 0:
-            st.error("❌ 生成过程完成但未找到音频文件")
+        # 决定使用哪个脚本
+        if force_standard:
+            script = "generate.sh"
+            st.info("已强制使用标准生成模式(generate.sh)")
+        elif gpu_info and gpu_info["total"] >= 30:
+            script = "generate.sh"
+            st.info(f"检测到充足显存 ({gpu_info['total']:.1f}GB)，将使用标准生成模式")
         else:
-            st.error(f"❌ 生成失败 (返回码: {return_code})")
+            script = "generate_lowmem.sh"
+            st.warning(f"显存不足30GB ({gpu_info['total']:.1f}GB if available)，使用低显存模式")
+        
+        # 使用绝对路径
+        cmd = [
+            "bash",
+            str(SONG_GEN_DIR / script),
+            str(SONG_GEN_DIR / "ckpt/songgeneration_base/"),
+            str(get_absolute_path(jsonl_path)),
+            str(get_absolute_path(output_dir))
+        ]
+        
+        # 添加生成类型参数
+        if gen_type:
+            cmd.append(gen_type)
+        
+        # 显示执行命令
+        st.code(" ".join(cmd), language="bash")
+
+        # 显示状态信息
+        status_text = st.empty()
+        status_text.text("音乐生成中，请查看终端输出...")
+        
+        # 创建进程锁文件
+        lock_file = Path(output_dir) / "generation.lock"
+        if lock_file.exists():
+            st.error("❌ 检测到已有生成进程运行，请删除lock文件后再试")
+            return
+            
+        try:
+            # 创建锁文件
+            lock_file.touch()
+            
+            # 执行命令 - 直接输出到终端
+            process = subprocess.Popen(
+                cmd,
+                cwd=str(SONG_GEN_DIR),
+                stdout=sys.stdout,
+                stderr=sys.stderr,
+                universal_newlines=True
+            )
+            
+            # 保存进程到session state
+            st.session_state.running_process = process
+            
+            # 等待命令完成
+            return_code = process.wait()
+            
+        finally:
+            # 无论成功失败都清理锁文件和进程状态
+            if lock_file.exists():
+                lock_file.unlink()
+            st.session_state.running_process = None
+            status_text.empty()
+        
+        # 检查是否有生成的音频文件
+        audio_files = list(Path(get_absolute_path(output_dir)).glob("audios/*.flac"))
+        
+        # 处理结果
+        if audio_files:
+            st.success("🎵 音乐生成完成！")
+            display_generated_files(output_dir)
+            
+            if return_code != 0:
+                st.warning(f"⚠️ 生成过程出现警告 (返回码: {return_code})")
+        else:
+            if return_code == 0:
+                st.error("❌ 生成过程完成但未找到音频文件")
+            else:
+                st.error(f"❌ 生成失败 (返回码: {return_code})")
+                
+    except Exception as e:
+        st.error(f"生成过程中发生错误: {str(e)}")
+        if 'lock_file' in locals() and lock_file.exists():
+            lock_file.unlink()
+        st.session_state.running_process = None
 
 
 def display_generated_files(output_dir: str):
@@ -491,18 +527,28 @@ def display_generated_files(output_dir: str):
 
 def clean_generated_lyrics(raw_lyrics: str) -> str:
     """
-    Format raw lyrics into the specified structure:
-    - Sections separated by ' ; '
-    - Each line in vocal sections ends with a period
-    - No spaces around periods
-    - Instrumental sections without content
+    格式化原始歌词文本：
+    1. 段落间用" ; "分隔
+    2. 所有人声段落中的行用"."分隔
+    3. 将所有中文标点和空格替换为英文句点
+    4. 器乐段落不包含内容
     
     Args:
-        raw_lyrics: Raw lyrics text with section markers
+        raw_lyrics: 包含段落标记的原始歌词文本
         
     Returns:
-        Formatted string with strict section formatting
+        格式化后的歌词字符串
     """
+    # 替换规则：中文标点和空格都改为英文句点
+    replace_rules = {
+        ' ': '.',  # 空格
+        '，': '.', '。': '.', '、': '.', '；': '.', '：': '.',
+        '？': '.', '！': '.', '「': '.', '」': '.', '『': '.',
+        '』': '.', '（': '.', '）': '.', '《': '.', '》': '.',
+        '【': '.', '】': '.', '『': '.', '』': '.', '〔': '.',
+        '〕': '.', '—': '.', '～': '.', '…': '.', '·': '.'
+    }
+    
     sections = []
     current_section = None
     current_lines = []
@@ -512,7 +558,7 @@ def clean_generated_lyrics(raw_lyrics: str) -> str:
         if not line:
             continue
         
-        # Detect section headers like [verse]
+        # 检测段落标记如[verse]
         section_match = re.match(r'^\[([a-z\-]+)\]$', line)
         if section_match:
             if current_section is not None:
@@ -520,28 +566,39 @@ def clean_generated_lyrics(raw_lyrics: str) -> str:
             current_section = section_match.group(1)
             current_lines = []
         elif current_section is not None:
-            # Clean lyric line and add to current section
-            cleaned_line = line.replace(' ', '.').replace('，', '.').replace('。', '.').strip('. ')
+            # 替换所有指定字符为句点
+            cleaned_line = ''.join(
+                replace_rules.get(char, char) 
+                for char in line
+            ).strip('.')  # 去除首尾多余的句点
+            
+            # 合并连续的句点为一个
+            cleaned_line = re.sub(r'\.+', '.', cleaned_line)
+            
             if cleaned_line:
                 current_lines.append(cleaned_line)
     
-    # Add the final section if exists
+    # 添加最后一段
     if current_section is not None:
         sections.append((current_section, current_lines))
     
-    # Format each section according to its type
+    # 格式化各段落
     formatted_sections = []
     for section_type, lines in sections:
         if section_type in ['verse', 'chorus', 'bridge']:
-            # Vocal sections: join lines with periods
-            content = ".".join(line.rstrip('.') for line in lines if line)
+            # 人声段落：用"."连接行，并确保不重复
+            content = ".".join(
+                line.rstrip('.') for line in lines 
+                if line and line != '.'
+            )
             formatted = f"[{section_type}] {content}" if content else f"[{section_type}]"
         else:
-            # Instrumental/other sections: no content
+            # 器乐段落：不包含内容
             formatted = f"[{section_type}]"
         formatted_sections.append(formatted)
     
     return " ; ".join(formatted_sections)
+
 
 def replace_chinese_punctuation(text):
     """替换中文标点为英文标点"""
@@ -669,6 +726,7 @@ def setup_ui():
         - 前奏/尾奏若超过20秒，可组合使用:
           `[intro-medium][intro-short]` ≈ 25秒
         """)
+
     # 生成歌词按钮
     if st.button("生成歌词"):
         with st.spinner(f"正在生成{song_length}的歌词..."):
@@ -763,6 +821,19 @@ def setup_ui():
         
         prefix = st.text_input("ID前缀", "sample_01")
         
+        # 添加生成类型选择
+        gen_type = st.radio(
+            "生成类型",
+            options=["", "bgm", "vocal"],
+            format_func=lambda x: {
+                "": "完整歌曲",
+                "bgm": "纯音乐(BGM)", 
+                "vocal": "纯人声"
+            }[x],
+            horizontal=True,
+            help="选择生成完整歌曲、纯背景音乐或纯人声"
+        )
+        
         # 设置默认路径或用户选择的路径
         prompt_audio_path = "input/sample_prompt_audio.wav"  # 默认值
         
@@ -854,13 +925,27 @@ def setup_ui():
                     st.info(f"当前GPU显存: {gpu_info['total']:.1f}GB (已用: {gpu_info['used']:.1f}GB)")
                     
                 # 修改run_music_generation调用，传入force_standard参数
-                run_music_generation(jsonl_path, output_dir, force_standard=force_standard)
+                run_music_generation(
+                    jsonl_path=jsonl_path,
+                    output_dir=output_dir,
+                    force_standard=force_standard,
+                    gen_type=gen_type  # 传入生成类型
+                )     
                 
+                # 在生成音乐部分添加取消按钮
+                if st.session_state.get('running_process'):
+                    if st.button("取消生成"):
+                        try:
+                            st.session_state.running_process.terminate()
+                            st.success("已发送终止信号，请等待进程结束")
+                        except Exception as e:
+                            st.error(f"终止失败: {str(e)}")
+                                           
                 # 创建进度条
-                progress_bar = st.progress(0)
+                # progress_bar = st.progress(0)
                 status_text = st.empty()
                 status_text.text("音乐生成中...")
-                                
+
         except FileNotFoundError as e:
             st.error(str(e))
             st.warning("请确保所有模型文件已正确下载并放置在指定位置")
@@ -920,6 +1005,11 @@ def show_system_monitor():
 # 主程序
 # ========================
 if __name__ == "__main__":
+
+    # 在全局变量或session_state中添加运行状态标志
+    if 'running_process' not in st.session_state:
+        st.session_state.running_process = None
+
     os.environ.update({
         'PYTHONDONTWRITEBYTECODE': '0',
         'TRANSFORMERS_CACHE': str(SONG_GEN_DIR / "third_party/hub"),
