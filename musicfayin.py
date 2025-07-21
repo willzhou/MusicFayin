@@ -18,6 +18,10 @@ import re
 import glob
 
 import threading
+from .config import DEEPSEEK_API_KEY, DEEPSEEK_URL
+from .config import EMOTIONS, SINGER_GENDERS, GENRES, INSTRUMENTATIONS, TIMBRES, AUTO_PROMPT_TYPES
+from .config import MUSIC_SECTION_TEMPLATES, STRUCTURE_TEMPLATES, SECTION_DEFINITIONS
+
 
 # 在文件顶部添加项目根目录定义
 PROJECT_ROOT = Path(__file__).parent  # 假设musicfayin.py现在放在SongGeneration的父目录
@@ -29,351 +33,6 @@ def get_absolute_path(relative_path: str) -> Path:
     if relative_path.startswith("ckpt/"):
         return SONG_GEN_DIR / path.relative_to("ckpt/")
     return PROJECT_ROOT / path
-
-# 常量定义
-DEEPSEEK_API_KEY = st.secrets['DEEPSEEK_API_KEY'] # 换成你自己的API KEY
-DEEPSEEK_URL = st.secrets['DEEPSEEK_URL']
-
-# “悲伤的”、“情绪的”、“愤怒的”、“快乐的”、“令人振奋的”、“强烈的”、“浪漫的”、“忧郁的”
-EMOTIONS = [
-    "sad", "emotional", "angry", "happy", 
-    "uplifting", "intense", "romantic", "melancholic"
-]
-
-SINGER_GENDERS = ["male", "female"]
-
-# “自动”、“中国传统”、“金属”、“雷鬼”、“中国戏曲”、“流行”、“电子”、“嘻哈”、“摇滚”、
-# “爵士”、“蓝调”、“古典”、“说唱”、“乡村”、“经典摇滚”、“硬摇滚”、“民谣”、“灵魂乐”、
-# “舞曲电子”、“乡村摇滚”、“舞曲、舞曲流行、浩室、流行”、“雷鬼”、“实验”、“舞曲、
-# 流行”、“舞曲、深浩室、电子”、“韩国流行音乐”、“实验流行”、“流行朋克”、“摇滚乐”、
-# “节奏布鲁斯”、“多样”、“流行摇滚”
-GENRES = [
-    'Auto', 'Chinese Tradition', 'Metal', 'Reggae', 'Chinese Opera',
-    "pop", "electronic", "hip hop", "rock", "jazz", "blues", "classical",
-    "rap", "country", "classic rock", "hard rock", "folk", "soul",
-    "dance, electronic", "rockabilly", "dance, dancepop, house, pop",
-    "reggae", "experimental", "dance, pop", "dance, deephouse, electronic",
-    "k-pop", "experimental pop", "pop punk", "rock and roll", "R&B",
-    "varies", "pop rock",
-]
-
-# “合成器与钢琴”，“钢琴与鼓”，“钢琴与合成器”，
-# “合成器与鼓”，“钢琴与弦乐”，“吉他与鼓”，
-# “吉他与钢琴”，“钢琴与低音提琴”，“钢琴与吉他”，
-# “原声吉他与钢琴”，“原声吉他与合成器”，
-# “合成器与吉他”，“钢琴与萨克斯风”，“萨克斯风与钢琴”，
-# “钢琴与小提琴”，“电吉他与鼓”，“原声吉他与鼓”，
-# “合成器”，“吉他与小提琴”，“吉他与口琴”，
-# “合成器与原声吉他”，“节拍”，“钢琴”，
-# “原声吉他与小提琴”，“铜管与钢琴”，“贝斯与鼓”，
-# “小提琴”，“原声吉他与口琴”，“钢琴与大提琴”，
-# “萨克斯风与小号”，“吉他与班卓琴”，“吉他与合成器”，
-# “萨克斯风”，“小提琴与钢琴”，“合成器与贝斯”，
-# “合成器与电吉他”，“电吉他与钢琴”，
-# “节拍与钢琴”，“合成器与吉他”
-INSTRUMENTATIONS = [
-    "synthesizer and piano", "piano and drums", "piano and synthesizer",
-    "synthesizer and drums", "piano and strings", "guitar and drums",
-    "guitar and piano", "piano and double bass", "piano and guitar",
-    "acoustic guitar and piano", "acoustic guitar and synthesizer",
-    "synthesizer and guitar", "piano and saxophone", "saxophone and piano",
-    "piano and violin", "electric guitar and drums", "acoustic guitar and drums",
-    "synthesizer", "guitar and fiddle", "guitar and harmonica",
-    "synthesizer and acoustic guitar", "beats", "piano",
-    "acoustic guitar and fiddle", "brass and piano", "bass and drums",
-    "violin", "acoustic guitar and harmonica", "piano and cello",
-    "saxophone and trumpet", "guitar and banjo", "guitar and synthesizer",
-    "saxophone", "violin and piano", "synthesizer and bass",
-    "synthesizer and electric guitar", "electric guitar and piano",
-    "beats and piano", "synthesizer and guitar"
-]
-
-# 音色：“黑暗的”、“明亮的”、“温暖的”、“岩石”、“变化的”、“柔和的”、“嗓音”
-TIMBRES = ["dark", "bright", "warm", "rock", "varies", "soft", "vocal"]
-
-AUTO_PROMPT_TYPES = ['Pop', 'R&B', 'Dance', 'Jazz', 'Folk', 'Rock', 
-                    'Chinese Style', 'Chinese Tradition', 'Metal', 
-                    'Reggae', 'Chinese Opera', 'Auto']
-
-
-# 在常量定义部分添加音乐段落时长配置
-MUSIC_SECTION_TEMPLATES = {
-    # 纯器乐段落
-    "intro-short": {
-        "description": "前奏超短版(0-10秒)",
-        "duration": "5-10秒",
-        "duration_avg": 7,  # (5+10)/2 ≈ 7.5 取整
-        "lyric_required": False
-    },
-    "intro-medium": {
-        "description": "前奏中等版(10-20秒)",
-        "duration": "15-20秒",
-        "duration_avg": 17,  # (15+20)/2 = 17.5 取整
-        "lyric_required": False
-    },
-    "intro-long": {
-        "description": "前奏完整版(20-30秒)",
-        "duration": "20-30秒",
-        "duration_avg": 25,  # (20+30)/2 = 25
-        "lyric_required": False
-    },
-    "outro-short": {
-        "description": "尾奏超短版(0-10秒)", 
-        "duration": "5-10秒",
-        "duration_avg": 7,
-        "lyric_required": False
-    },
-    "outro-medium": {
-        "description": "尾奏中等版(10-20秒)",
-        "duration": "15-20秒",
-        "duration_avg": 17,
-        "lyric_required": False
-    },
-    "outro-long": {
-        "description": "尾奏完整版(20-30秒)",
-        "duration": "20-30秒",
-        "duration_avg": 25,
-        "lyric_required": False
-    },
-    "inst-short": {
-        "description": "间奏短版(5-10秒)",
-        "duration": "5-10秒",
-        "duration_avg": 7,
-        "lyric_required": False
-    },
-    "inst-medium": {
-        "description": "间奏中等版(10-20秒)",
-        "duration": "15-20秒",
-        "duration_avg": 17,
-        "lyric_required": False
-    },
-    "inst-long": {
-        "description": "间奏完整版(20-30秒)",
-        "duration": "20-30秒",
-        "duration_avg": 25,
-        "lyric_required": False
-    },
-    "silence": {
-        "description": "空白停顿(1-3秒)",
-        "duration": "1-3秒",
-        "duration_avg": 2,  # 取中间值
-        "lyric_required": False
-    },
-    
-    # 人声段落
-    "verse": {
-        "description": "主歌段落(20-30秒)",
-        "duration": "20-30秒",
-        "duration_avg": 25,
-        "lyric_required": True,
-        "lines": "4-8行"
-    },
-    "chorus": {
-        "description": "副歌(高潮段落)", 
-        "duration": "20-30秒",
-        "duration_avg": 25,
-        "lyric_required": True,
-        "lines": "4-8行"
-    },
-    "bridge": {
-        "description": "过渡桥段",
-        "duration": "15-25秒",
-        "duration_avg": 20,  # (15+25)/2 = 20
-        "lyric_required": True,
-        "lines": "2-4行"
-    }
-}
-
-
-# - '[verse]'
-# - '[chorus]'
-# - '[bridge]'
-# - '[intro-short]'
-# - '[intro-medium]'
-# - '[intro-long]'
-# - '[outro-short]'
-# - '[outro-medium]'
-# - '[outro-long]'
-# - '[inst-short]'
-# - '[inst-medium]'
-# - '[inst-long]'
-# - '[silence]'
-
-# 典型结构模板
-# 音乐结构模板库 (36种)
-STRUCTURE_TEMPLATES = {
-    # 基础流行结构 (5种)
-    "pop_basic": {
-        "name": "流行基础结构",
-        "sections": ["intro-medium", "verse", "chorus", "verse", "chorus", "outro-medium"]
-    },
-    "pop_with_bridge": {
-        "name": "流行带桥段结构", 
-        "sections": ["intro-medium", "verse", "chorus", "verse", "chorus", "bridge", "chorus", "outro-medium"]
-    },
-    "pop_with_prechorus": {
-        "name": "流行带预副歌结构",
-        "sections": ["intro-short", "verse", "verse", "chorus", "verse", "verse", "chorus", "outro-short"]
-    },
-    "pop_doublechorus": {
-        "name": "流行双副歌结构",
-        "sections": ["intro-short", "verse", "chorus", "chorus", "verse", "chorus", "chorus", "outro-short"]
-    },
-    "pop_postchorus": {
-        "name": "流行带后副歌结构",
-        "sections": ["intro-medium", "verse", "verse", "chorus", "inst-short", "verse", "verse", "chorus", "inst-short", "outro-medium"]
-    },
-    
-    # 摇滚/金属结构 (8种)
-    "rock_classic": {
-        "name": "经典摇滚结构",
-        "sections": ["intro-long", "verse", "chorus", "verse", "chorus", "inst-long", "chorus", "outro-long"]
-    },
-    "metal_progressive": {
-        "name": "前卫金属结构",
-        "sections": ["intro-long", "verse", "bridge", "chorus", "inst-long", "verse", "bridge", "chorus", "inst-long", "outro-long"]
-    },
-    "punk": {
-        "name": "朋克结构",
-        "sections": ["intro-short", "verse", "chorus", "verse", "chorus", "bridge", "chorus", "outro-short"]
-    },
-    "hardrock": {
-        "name": "硬摇滚结构",
-        "sections": ["intro-long", "verse", "chorus", "verse", "chorus", "inst-long", "inst-long", "chorus", "outro-long"]
-    },
-    "rock_ballad": {
-        "name": "摇滚抒情曲结构",
-        "sections": ["intro-long", "verse", "verse", "chorus", "inst-long", "verse", "chorus", "outro-long"]
-    },
-    "metalcore": {
-        "name": "金属核结构",
-        "sections": ["intro-short", "verse", "chorus", "verse", "chorus", "inst-short", "chorus", "outro-short"]
-    },
-    "blues_rock": {
-        "name": "蓝调摇滚结构",
-        "sections": ["intro-medium", "verse", "verse", "chorus", "inst-medium", "verse", "chorus", "outro-medium"]
-    },
-    "rock_instrumental": {
-        "name": "摇滚器乐曲结构",
-        "sections": ["intro-long", "inst-long", "inst-medium", "inst-long", "inst-medium", "inst-long", "inst-long", "outro-long"]
-    },
-    
-    # 电子音乐结构 (7种)
-    "edm_builddrop": {
-        "name": "EDM构建-高潮结构",
-        "sections": ["intro-long", "inst-medium", "inst-short", "inst-medium", "inst-medium", "inst-short", "outro-medium"]
-    },
-    "house": {
-        "name": "浩室结构",
-        "sections": ["intro-long", "inst-long", "inst-medium", "inst-long", "inst-medium", "inst-short", "outro-long"]
-    },
-    "trance": {
-        "name": "迷幻结构",
-        "sections": ["intro-long", "inst-long", "inst-medium", "inst-short", "inst-medium", "inst-medium", "inst-short", "outro-long"]
-    },
-    "dubstep": {
-        "name": "回响贝斯结构",
-        "sections": ["intro-medium", "verse", "inst-short", "inst-medium", "verse", "inst-short", "outro-short"]
-    },
-    "techno": {
-        "name": "科技结构",
-        "sections": ["intro-long", "inst-long", "inst-medium", "inst-long", "inst-short", "inst-long", "outro-long"]
-    },
-    "drum_bass": {
-        "name": "鼓打贝斯结构",
-        "sections": ["intro-medium", "inst-short", "verse", "inst-short", "inst-medium", "inst-short", "outro-medium"]
-    },
-    "ambient": {
-        "name": "氛围结构",
-        "sections": ["intro-long", "inst-long", "inst-medium", "inst-short", "inst-medium", "outro-long"]
-    },
-    
-    # 嘻哈/说唱结构 (5种)
-    "hiphop_classic": {
-        "name": "经典嘻哈结构",
-        "sections": ["intro-short", "verse", "chorus", "verse", "chorus", "bridge", "verse", "chorus", "outro-short"]
-    },
-    "trap": {
-        "name": "陷阱结构",
-        "sections": ["intro-short", "verse", "chorus", "verse", "chorus", "inst-short", "chorus", "outro-short"]
-    },
-    "rap_storytelling": {
-        "name": "叙事说唱结构",
-        "sections": ["intro-medium", "verse", "chorus", "verse", "chorus", "verse", "chorus", "outro-medium"]
-    },
-    "hiphop_jazzy": {
-        "name": "爵士嘻哈结构",
-        "sections": ["intro-medium", "verse", "chorus", "verse", "chorus", "inst-medium", "chorus", "outro-medium"]
-    },
-    "rap_battle": {
-        "name": "对战说唱结构",
-        "sections": ["intro-short", "verse", "verse", "verse", "verse", "outro-short"]
-    },
-    
-    # 中国传统/民族结构 (6种)
-    "chinese_folk": {
-        "name": "中国民谣结构",
-        "sections": ["intro-long", "verse", "inst-medium", "verse", "inst-medium", "outro-long"]
-    },
-    "chinese_opera": {
-        "name": "戏曲结构",
-        "sections": ["intro-long", "verse", "inst-short", "verse", "inst-medium", "inst-short", "verse", "outro-long"]
-    },
-    "guqin": {
-        "name": "古琴曲结构",
-        "sections": ["intro-long", "inst-long", "inst-medium", "inst-long", "inst-medium", "outro-long"]
-    },
-    "ethnic_fusion": {
-        "name": "民族融合结构",
-        "sections": ["intro-long", "verse", "chorus", "verse", "chorus", "inst-long", "outro-long"]
-    },
-    "chinese_pop": {
-        "name": "中国流行结构",
-        "sections": ["intro-medium", "verse", "verse", "chorus", "inst-medium", "verse", "verse", "chorus", "outro-medium"]
-    },
-    "mongolian_throat": {
-        "name": "蒙古呼麦结构",
-        "sections": ["intro-long", "verse", "inst-long", "inst-short", "verse", "inst-short", "outro-long"]
-    },
-    
-    # 爵士/蓝调结构 (5种)
-    "jazz_standard": {
-        "name": "爵士标准结构",
-        "sections": ["intro-medium", "inst-medium", "inst-long", "inst-medium", "inst-medium", "outro-medium"]
-    },
-    "blues_12bar": {
-        "name": "12小节蓝调结构",
-        "sections": ["intro-short", "verse", "verse", "verse", "inst-medium", "verse", "outro-short"]
-    },
-    "jazz_fusion": {
-        "name": "爵士融合结构",
-        "sections": ["intro-long", "inst-medium", "inst-long", "inst-medium", "inst-short", "inst-medium", "outro-long"]
-    },
-    "bebop": {
-        "name": "比博普结构",
-        "sections": ["intro-short", "inst-short", "inst-medium", "inst-long", "inst-medium", "inst-short", "outro-short"]
-    },
-    "jazz_ballad": {
-        "name": "爵士抒情曲结构",
-        "sections": ["intro-long", "inst-long", "inst-medium", "inst-long", "outro-long"]
-    }
-}
-
-# 特殊段落说明
-SECTION_DEFINITIONS = {
-    "skank": "雷鬼特有的反拍节奏段落",
-    "guitar-solo": "吉他独奏部分",
-    "post-chorus": "副歌后的记忆点段落",
-    "drop": "电子舞曲的高潮部分",
-    "head": "爵士乐主题段落",
-    "ad-lib": "即兴演唱部分",
-    "12bar": "12小节蓝调进行",
-    "build-up": "电子乐中的情绪构建段落",
-    "breakdown": "电子乐中的分解段落",
-    "call-response": "非洲音乐中的呼应段落",
-    "copla": "弗拉门戈中的歌唱段落",
-    "falseta": "弗拉门戈吉他独奏段落"
-}
 
 # 初始化session state
 if 'app_state' not in st.session_state:
@@ -740,18 +399,26 @@ def save_jsonl(entries: List[Dict], filename: str) -> str:
     
     return str(filepath)
 
-def run_music_generation(jsonl_path: str, output_dir: str = "output"):
-    """执行音乐生成命令（日志直接输出到终端）"""
+def run_music_generation(jsonl_path: str, output_dir: str = "output", force_standard: bool = False):
+    """执行音乐生成命令（日志直接输出到终端）
+    
+    Args:
+        jsonl_path: JSONL配置文件路径
+        output_dir: 输出目录
+        force_standard: 是否强制使用标准模式(generate.sh)
+    """
     # 获取显存信息
     gpu_info = get_gpu_memory()
     
-    # 默认使用低内存模式
-    script = "generate_lowmem.sh"
-    
-    if gpu_info and gpu_info["total"] >= 30:
+    # 决定使用哪个脚本
+    if force_standard:
+        script = "generate.sh"
+        st.info("已强制使用标准生成模式(generate.sh)")
+    elif gpu_info and gpu_info["total"] >= 30:
         script = "generate.sh"
         st.info(f"检测到充足显存 ({gpu_info['total']:.1f}GB)，将使用标准生成模式")
     else:
+        script = "generate_lowmem.sh"
         st.warning(f"显存不足30GB ({gpu_info['total']:.1f}GB if available)，使用低显存模式")
     
     # 使用绝对路径
@@ -952,7 +619,7 @@ def setup_ui():
             "歌曲时长（分钟）", 
             min_value=1, 
             max_value=10, 
-            value=3,
+            value=2,
             step=1
         )
         length_sec = st.slider(
@@ -1140,6 +807,14 @@ def setup_ui():
         # 输出目录设置
         output_dir = st.text_input("输出目录", "output")
         
+        # 添加强制使用generate.sh的选项
+        col1, col2 = st.columns(2)
+        with col1:
+            force_standard = st.checkbox(
+                "强制使用标准模式(generate.sh)", 
+                help="忽略显存检测，强制使用标准生成模式(需要30GB以上显存)"
+            )
+        
         # 检查模型文件
         try:
             # 验证模型文件是否存在
@@ -1177,9 +852,10 @@ def setup_ui():
                 gpu_info = get_gpu_memory()
                 if gpu_info:
                     st.info(f"当前GPU显存: {gpu_info['total']:.1f}GB (已用: {gpu_info['used']:.1f}GB)")
+                    
+                # 修改run_music_generation调用，传入force_standard参数
+                run_music_generation(jsonl_path, output_dir, force_standard=force_standard)
                 
-                run_music_generation(jsonl_path, output_dir)
-
                 # 创建进度条
                 progress_bar = st.progress(0)
                 status_text = st.empty()
@@ -1247,6 +923,7 @@ if __name__ == "__main__":
     os.environ.update({
         'PYTHONDONTWRITEBYTECODE': '0',
         'TRANSFORMERS_CACHE': str(SONG_GEN_DIR / "third_party/hub"),
+        'HF_HOME': str(SONG_GEN_DIR / "third_party/hub"),
         'NCCL_HOME': '/usr/local/tccl',
         'PYTHONPATH': ":".join([
             str(SONG_GEN_DIR / "codeclm/tokenizer"),
