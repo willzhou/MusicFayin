@@ -81,14 +81,14 @@ MUSIC_SECTION_TEMPLATES = {
     # 纯器乐段落
     "intro-short": {
         "description": "前奏超短版(0-10秒)",
-        "duration": "5-10秒",
-        "duration_avg": 7,  # (5+10)/2 ≈ 7.5 取整
+        "duration": "0-10秒",
+        "duration_avg": 5,  # (0+10)/2 = 5 取整
         "lyric_required": False
     },
     "intro-medium": {
         "description": "前奏中等版(10-20秒)",
-        "duration": "15-20秒",
-        "duration_avg": 17,  # (15+20)/2 = 17.5 取整
+        "duration": "10-20秒",
+        "duration_avg": 15,  # (10+20)/2 = 15 取整
         "lyric_required": False
     },
     "intro-long": {
@@ -99,14 +99,14 @@ MUSIC_SECTION_TEMPLATES = {
     },
     "outro-short": {
         "description": "尾奏超短版(0-10秒)", 
-        "duration": "5-10秒",
-        "duration_avg": 7,
+        "duration": "0-10秒",
+        "duration_avg": 5,
         "lyric_required": False
     },
     "outro-medium": {
         "description": "尾奏中等版(10-20秒)",
-        "duration": "15-20秒",
-        "duration_avg": 17,
+        "duration": "10-20秒",
+        "duration_avg": 15,
         "lyric_required": False
     },
     "outro-long": {
@@ -116,15 +116,15 @@ MUSIC_SECTION_TEMPLATES = {
         "lyric_required": False
     },
     "inst-short": {
-        "description": "间奏短版(5-10秒)",
-        "duration": "5-10秒",
-        "duration_avg": 7,
+        "description": "间奏短版(5-12秒)",
+        "duration": "5-12秒",
+        "duration_avg": 8,
         "lyric_required": False
     },
     "inst-medium": {
         "description": "间奏中等版(10-20秒)",
-        "duration": "15-20秒",
-        "duration_avg": 17,
+        "duration": "10-20秒",
+        "duration_avg": 15,
         "lyric_required": False
     },
     "inst-long": {
@@ -148,6 +148,13 @@ MUSIC_SECTION_TEMPLATES = {
         "lyric_required": True,
         "lines": "4-8行"
     },
+    "pre-chorus": {
+        "description": "预副歌", 
+        "duration": "6-12秒",
+        "duration_avg": 9,
+        "lyric_required": True,
+        "lines": "1-5行"
+    },
     "chorus": {
         "description": "副歌(高潮段落)", 
         "duration": "20-30秒",
@@ -161,7 +168,7 @@ MUSIC_SECTION_TEMPLATES = {
         "duration_avg": 20,  # (15+25)/2 = 20
         "lyric_required": True,
         "lines": "2-4行"
-    }
+    },
 }
 
 # 典型结构模板
@@ -170,19 +177,19 @@ STRUCTURE_TEMPLATES = {
     # 基础流行结构 (5种)
     "pop_basic": {
         "name": "默认结构",
-        "sections": ["intro-short", "verse", "chorus", "verse", "chorus", "outro-short"]
+        "sections": ["intro-short", "verse", "chorus", "inst-short","verse", "chorus", "outro-short"]
     },
     "pop_with_bridge": {
         "name": "流行带桥段结构", 
-        "sections": ["intro-short", "verse", "chorus", "verse", "chorus", "bridge", "chorus", "outro-short"]
+        "sections": ["intro-short", "verse", "chorus", "verse", "inst-short", "chorus", "bridge", "chorus", "outro-short"]
     },
     "pop_with_prechorus": {
         "name": "流行带预副歌结构",
-        "sections": ["intro-short", "verse", "verse", "chorus", "verse", "verse", "chorus", "outro-short"]
+        "sections": ["intro-short", "verse", "pre-chorus", "chorus", "verse", "inst-short", "pre-chorus", "chorus", "bridge","outro-short"]
     },
     "pop_doublechorus": {
         "name": "流行双副歌结构",
-        "sections": ["intro-short", "verse", "chorus", "chorus", "verse", "chorus", "chorus", "outro-short"]
+        "sections": ["intro-short", "verse", "pre-chorus", "chorus", "inst-short", "verse", "chorus", "bridge", "outro-short"]
     },
     "pop_postchorus": {
         "name": "流行带后副歌结构",

@@ -2,34 +2,29 @@
 # License: Apache 2.0
 
 import streamlit as st
-import json
-import requests
+
 from datetime import datetime
 import os
 import subprocess
-import torch
 
 from typing import Dict, Any, List, Tuple, Optional
-import psutil
 import sys
 from pathlib import Path
-import re
 
-# import glob
-# import time
-# import threading
-# from .config import DEEPSEEK_API_KEY, DEEPSEEK_URL
+from config import EMOTIONS, SINGER_GENDERS, GENRES, INSTRUMENTATIONS, TIMBRES
+from config import MUSIC_SECTION_TEMPLATES, STRUCTURE_TEMPLATES
 
-from config import EMOTIONS, SINGER_GENDERS, GENRES, INSTRUMENTATIONS, TIMBRES, AUTO_PROMPT_TYPES
-from config import MUSIC_SECTION_TEMPLATES, STRUCTURE_TEMPLATES, SECTION_DEFINITIONS
-
-from api_handlers import call_deepseek_api, analyze_lyrics
+from api_handlers import (
+    generate_lyrics_with_duration, 
+    analyze_lyrics,
+    parse_duration_to_seconds,
+    display_duration_breakdown
+)
 from func_utils import (
     get_absolute_path,
-    parse_duration_to_seconds,
-    calculate_section_timings,
     clean_generated_lyrics,
     get_gpu_memory,
+    show_system_monitor,
     save_jsonl
 )
 from config import DEFAULT_BPM
@@ -37,6 +32,8 @@ from config import DEFAULT_BPM
 # 在文件顶部添加项目根目录定义
 PROJECT_ROOT = Path(__file__).parent  # 假设musicfayin.py现在放在SongGeneration的父目录
 SONG_GEN_DIR = PROJECT_ROOT / "SongGeneration"
+
+st.set_page_config(page_title="MusicFayIn", layout="wide")
 
 # 初始化session state
 if 'app_state' not in st.session_state:
@@ -47,94 +44,6 @@ if 'app_state' not in st.session_state:
         'generated_jsonl': None,
         'music_files': []
     }
-  
-
-# ========================
-# 辅助函数
-# ========================
-def format_section_timing(sections: List[str], timings: Dict[str, int]) -> str:
-    """格式化段落时长信息"""
-    return "\n".join(
-        f"- [{sec}]: {timings[sec]}秒" + 
-        f" ({MUSIC_SECTION_TEMPLATES[sec]['description']})" 
-        for sec in sections
-    )
-
-def calc_lines_from_seconds(seconds: int) -> str:
-    """根据秒数计算建议行数"""
-    min_lines = max(2, seconds // 5)  # 每行最多5秒
-    max_lines = max(4, seconds // 3)  # 每行最少3秒
-    return f"{min_lines}-{max_lines}行"
-
-
-def generate_lyrics_with_duration(
-    lyric_prompt: str,
-    template: Dict[str, Any],
-    song_length: str
-) -> Optional[str]:
-    """生成带时长控制的歌词"""
-    try:
-        # 解析总时长
-        total_seconds = parse_duration_to_seconds(song_length)
-        
-        # 计算段落时长
-        section_timings = calculate_section_timings(template["sections"], total_seconds)
-        
-        # 构建提示词
-        prompt_lines = [
-            f"请根据以下要求生成一首中文歌曲的完整歌词：\n"
-            f"主题：{lyric_prompt}",
-            f"""歌曲结构：
-            {", ".join([f"[{section}]" for section in template["sections"]])}
-            具体要求：
-            1. 严格按照给定的结构标签分段
-            2. 器乐段落([intro-*]/[outro-*])不需要填歌词
-            3. 人声段落([verse]/[chorus]/[bridge])必须包含歌词
-            4. 主歌([verse])每段4-8行
-            5. 副歌([chorus])要突出高潮部分
-            6. 桥段([bridge])2-4行
-            7. 整体要有押韵和节奏感
-            8. 不要包含歌曲标题
-            9. 不要包含韵脚分析等额外说明
-            返回格式示例：
-            [intro-medium]
-            [verse]
-            第一行歌词
-            第二行歌词
-            ...
-            [chorus]
-            副歌第一行
-            副歌第二行
-            ...""",
-            f"总时长：{song_length} ({total_seconds}秒)",
-            "段落时长分配："
-        ]
-        
-        # 添加各段落信息
-        for section in template["sections"]:
-            desc = MUSIC_SECTION_TEMPLATES[section]["description"]
-            prompt_lines.append(f"- [{section}]: {section_timings[section]}秒 ({desc})")
-        
-        # 添加歌词行数要求
-        prompt_lines.append("\n歌词要求：")
-        prompt_lines.append(f"1. 主歌([verse]): 每段{calc_lines_from_seconds(section_timings['verse'])}行")
-        prompt_lines.append(f"2. 副歌([chorus]): 每段{calc_lines_from_seconds(section_timings['chorus'])}行")
-        
-        # 只有模板包含bridge时才添加bridge要求
-        if "bridge" in template["sections"]:
-            prompt_lines.append(f"3. 桥段([bridge]): {calc_lines_from_seconds(section_timings['bridge'])}行")
-        
-        prompt_lines.append("4. 器乐段落不需要歌词")
-        prompt_lines.append("5. 注意押韵和节奏")
-        
-        prompt = "\n".join(prompt_lines)
-        
-        return call_deepseek_api(prompt)
-    except Exception as e:
-        st.error(f"歌词生成失败: {str(e)}")
-        return None
-
-    
 
 def generate_jsonl_entries(prefix: str, lyrics: str, analysis: Dict[str, Any], 
                          prompt_audio_path: str = "input/sample_prompt_audio.wav") -> List[Dict]:
@@ -303,49 +212,12 @@ def display_generated_files(output_dir: str):
                 )
 
 
-
-def replace_chinese_punctuation(text):
-    """替换中文标点为英文标点"""
-    punctuation_map = {
-        '，': ',', '。': '.', '、': ',', '；': ';', '：': ':',
-        '？': '?', '！': '!', '「': '"', '」': '"', '『': '"',
-        '』': '"', '（': '(', '）': ')', '《': '"', '》': '"'
-    }
-    
-    # 逐个字符替换
-    result = []
-    for char in text:
-        if char in punctuation_map:
-            # 在标点前后添加空格确保分割
-            result.append(f" {punctuation_map[char]} ")
-        else:
-            result.append(char)
-    
-    # 合并并标准化空格
-    return re.sub(r'\s+', ' ', "".join(result)).strip()
-
-
-import plotly.express as px
-def display_duration_breakdown(sections: List[str], total_seconds: int):
-    """显示时长分配饼图"""
-    timings = calculate_section_timings(sections, total_seconds)
-    
-    fig = px.pie(
-        names=[f"[{sec}]" for sec in sections],
-        values=[timings[sec] for sec in sections],
-        title=f"时长分配 (总计: {total_seconds}秒)",
-        color_discrete_sequence=px.colors.sequential.RdBu
-    )
-    st.plotly_chart(fig, use_container_width=True)
-
-
 # 典型结构模板
 # ========================
 # Streamlit 界面
 # ========================
 def setup_ui():
     """设置Streamlit用户界面"""
-    st.set_page_config(page_title="MusicFayIn", layout="wide")
     st.title("🎵 MusicFayIn 人工智能音乐生成系统")
     
     # 步骤1: 歌词生成
@@ -424,8 +296,8 @@ def setup_ui():
 
             if lyrics:
                 cleaned_lyrics = clean_generated_lyrics(lyrics)
+                cleaned_lyrics = st.text_area("生成的歌词", cleaned_lyrics, height=200)
                 st.session_state.app_state['lyrics'] = cleaned_lyrics
-                st.text_area("生成的歌词", cleaned_lyrics, height=200)
                 
                 # 显示时长分配
                 total_seconds = parse_duration_to_seconds(song_length)
@@ -563,35 +435,37 @@ def setup_ui():
             st.success(f"文件已保存: {prompt_audio_path}")
             prompt_audio_path = str(prompt_audio_path)  # 转换为字符串供后续使用
 
+
+        # 添加条目选择界面
+        st.subheader("选择要保留的配置条目")
+        col1, col2, col3, col4 = st.columns(4)
+        
+        # 默认选中第3和第4条
+        default_selected = [False, False, True, True if uploaded_file else False]
+        selected = [
+            col1.checkbox("自动提示", value=default_selected[0], key="autoprompt"),
+            col2.checkbox("无提示", value=default_selected[1], key="noprompt"),
+            col3.checkbox("文本提示", value=default_selected[2], key="textprompt"),
+            col4.checkbox("音频提示", value=default_selected[3], key="audioprompt")
+        ]
+
+        entries = generate_jsonl_entries(
+            prefix,
+            st.session_state.app_state['lyrics'],
+            st.session_state.app_state['analysis_result'],
+            prompt_audio_path
+        )       
                 
         if st.button("生成JSONL配置"):
-            entries = generate_jsonl_entries(
-                prefix,
-                st.session_state.app_state['lyrics'],
-                st.session_state.app_state['analysis_result'],
-                prompt_audio_path
-            )
-            
-            # 添加条目选择界面
-            st.subheader("选择要保留的配置条目")
-            col1, col2, col3, col4 = st.columns(4)
-            
-            # 默认选中第3和第4条
-            default_selected = [False, False, True, True]
-            selected = [
-                col1.checkbox("自动提示", value=default_selected[0], key="autoprompt"),
-                col2.checkbox("无提示", value=default_selected[1], key="noprompt"),
-                col3.checkbox("文本提示", value=default_selected[2], key="textprompt"),
-                col4.checkbox("音频提示", value=default_selected[3], key="audioprompt")
-            ]
-            
+        
             # 过滤选中的条目
             filtered_entries = [entry for entry, select in zip(entries, selected) if select]
-            
+
             if not filtered_entries:
                 st.warning("请至少选择一条配置")
                 return
             
+                        
             filename = f"{prefix}_config_{datetime.now().strftime('%Y%m%d_%H%M%S')}.jsonl"
             filepath = save_jsonl(filtered_entries, filename)
             
@@ -706,33 +580,6 @@ def setup_ui():
     # 系统监控
     if st.sidebar.checkbox("显示系统资源"):
         show_system_monitor()
-
-def show_system_monitor():
-    """显示系统资源监控"""
-    st.sidebar.subheader("系统资源监控")
-    
-    # CPU使用率
-    cpu_percent = psutil.cpu_percent()
-    st.sidebar.metric("CPU使用率", f"{cpu_percent}%")
-    st.sidebar.progress(cpu_percent / 100)
-    
-    # 内存使用
-    mem = psutil.virtual_memory()
-    st.sidebar.metric("内存使用", 
-                     f"{mem.used/1024/1024:.1f}MB / {mem.total/1024/1024:.1f}MB",
-                     f"{mem.percent}%")
-    
-    # GPU信息（如果可用）
-    if torch.cuda.is_available():
-        gpu_info = get_gpu_memory()
-        if gpu_info:
-            st.sidebar.subheader("GPU显存信息")
-            st.sidebar.metric(
-                "总显存", 
-                f"{gpu_info['total']:.1f} GB",
-                f"已用: {gpu_info['used']:.1f} GB"
-            )
-            st.sidebar.progress(gpu_info['used'] / gpu_info['total'])
 
 
 # ========================

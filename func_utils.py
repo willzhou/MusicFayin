@@ -6,7 +6,7 @@
 包含与音乐生成相关的辅助函数和工具
 """
 
-import os
+import streamlit as st
 import json
 import re
 import torch
@@ -14,6 +14,7 @@ import psutil
 from pathlib import Path
 from datetime import datetime
 from typing import Dict, Any, List, Tuple, Optional
+
 
 # 从config.py导入常量
 from config import (
@@ -26,83 +27,13 @@ from config import (
 PROJECT_ROOT = Path(__file__).parent  # 假设musicfayin.py现在放在SongGeneration的父目录
 SONG_GEN_DIR = PROJECT_ROOT / "SongGeneration"
 
+
 def get_absolute_path(relative_path: str, project_root: Path = PROJECT_ROOT, song_gen_dir: Path = SONG_GEN_DIR) -> Path:
     """将相对路径转换为绝对路径"""
     path = Path(relative_path)
     if relative_path.startswith("ckpt/"):
         return song_gen_dir / path.relative_to("ckpt/")
     return project_root / path
-
-def parse_duration_to_seconds(duration_str: str) -> int:
-    """将中文时长字符串转换为秒数"""
-    try:
-        # 处理"X分Y秒"格式
-        if "分" in duration_str and "秒" in duration_str:
-            minutes = int(re.search(r"(\d+)分", duration_str).group(1))
-            seconds = int(re.search(r"(\d+)秒", duration_str).group(1))
-            return minutes * 60 + seconds
-        
-        # 处理只有分钟的格式
-        if "分" in duration_str:
-            return int(duration_str.replace("分", "")) * 60
-        
-        # 处理纯秒数格式
-        if "秒" in duration_str:
-            return int(duration_str.replace("秒", ""))
-        
-        # 默认处理纯数字
-        return int(duration_str)
-    except Exception as e:
-        raise ValueError(f"无效的时长格式: '{duration_str}'") from e
-
-def calculate_section_timings(sections: List[str], total_seconds: int) -> Dict[str, int]:
-    """计算每个段落的时长分配"""
-    # 1. 验证所有段落是否定义
-    for section in sections:
-        if section not in MUSIC_SECTION_TEMPLATES:
-            raise ValueError(f"未定义的段落类型: {section}")
-    
-    # 2. 计算总基准时长
-    total_baseline = sum(
-        MUSIC_SECTION_TEMPLATES[sec]["duration_avg"] 
-        for sec in sections
-    )
-    
-    # 3. 检查是否包含bridge段落
-    has_bridge = "bridge" in sections
-    
-    # 4. 分配时长
-    section_timings = {}
-    remaining_seconds = total_seconds
-    
-    # 先分配verse和chorus段落
-    for section in [sec for sec in sections if sec in ["verse", "chorus"]]:
-        allocated = int(MUSIC_SECTION_TEMPLATES[section]["duration_avg"] * total_seconds / total_baseline)
-        allocated = max(15, min(45, allocated))  # 限制15-45秒
-        section_timings[section] = allocated
-        remaining_seconds -= allocated
-    
-    # 如果有bridge段落，分配时长
-    if has_bridge:
-        bridge_seconds = int(MUSIC_SECTION_TEMPLATES["bridge"]["duration_avg"] * total_seconds / total_baseline)
-        bridge_seconds = max(10, min(30, bridge_seconds))  # 限制10-30秒
-        section_timings["bridge"] = bridge_seconds
-        remaining_seconds -= bridge_seconds
-    
-    # 分配器乐段落
-    instrumental_sections = [sec for sec in sections if sec not in ["verse", "chorus", "bridge"]]
-    for section in instrumental_sections:
-        allocated = int(MUSIC_SECTION_TEMPLATES[section]["duration_avg"] * total_seconds / total_baseline)
-        allocated = max(5, min(30, allocated))  # 限制5-30秒
-        section_timings[section] = allocated
-        remaining_seconds -= allocated
-    
-    # 处理剩余时间（加到最后一个段落）
-    if remaining_seconds > 0:
-        last_section = sections[-1]
-        section_timings[last_section] += remaining_seconds
-    
-    return section_timings
 
 def clean_generated_lyrics(raw_lyrics: str) -> str:
     """格式化原始歌词文本"""
@@ -166,6 +97,7 @@ def clean_generated_lyrics(raw_lyrics: str) -> str:
     
     return " ; ".join(formatted_sections)
 
+@st.cache_resource(ttl=300)  # 缓存5分钟
 def get_gpu_memory() -> Optional[Dict[str, float]]:
     """获取GPU显存信息（单位：GB）"""
     try:
@@ -199,3 +131,32 @@ def save_jsonl(entries: List[Dict], filename: str) -> str:
             f.write(json.dumps(serializable_entry, ensure_ascii=False) + "\n")
     
     return str(filepath)
+
+
+def show_system_monitor():
+    """显示系统资源监控"""
+    st.sidebar.subheader("系统资源监控")
+    
+    # CPU使用率
+    cpu_percent = psutil.cpu_percent()
+    st.sidebar.metric("CPU使用率", f"{cpu_percent}%")
+    st.sidebar.progress(cpu_percent / 100)
+    
+    # 内存使用
+    mem = psutil.virtual_memory()
+    st.sidebar.metric("内存使用", 
+                     f"{mem.used/1024/1024:.1f}MB / {mem.total/1024/1024:.1f}MB",
+                     f"{mem.percent}%")
+    
+    # GPU信息（如果可用）
+    if torch.cuda.is_available():
+        gpu_info = get_gpu_memory()
+        if gpu_info:
+            st.sidebar.subheader("GPU显存信息")
+            st.sidebar.metric(
+                "总显存", 
+                f"{gpu_info['total']:.1f} GB",
+                f"已用: {gpu_info['used']:.1f} GB"
+            )
+            st.sidebar.progress(gpu_info['used'] / gpu_info['total'])
+
