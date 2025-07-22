@@ -50,8 +50,7 @@ echo "SAVE_DIR: $SAVE_DIR"
 echo "GEN_TYPE: $GEN_TYPE"
 
 # 执行主程序
-cd $BASE_DIR
-python3 "${BASE_DIR}/generate_lowmem.py" \
+python3 "${BASE_DIR}/generate.py" \
     "$CKPT_PATH" \
     "$JSONL" \
     "$SAVE_DIR" \

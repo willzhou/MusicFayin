@@ -106,20 +106,20 @@ def run_music_generation(jsonl_path: str, output_dir: str = "output",
         
         # 决定使用哪个脚本
         if force_standard:
-            script = "generate.sh"
-            st.info("已强制使用标准生成模式(generate.sh)")
+            script = "generate_safe.sh"
+            st.info("已强制使用标准生成模式(generate_safe.sh)")
         elif gpu_info and gpu_info["total"] >= 30:
-            script = "generate.sh"
+            script = "generate_safe.sh"
             st.info(f"检测到充足显存 ({gpu_info['total']:.1f}GB)，将使用标准生成模式")
         else:
-            script = "generate_lowmem.sh"
+            script = "generate_lowmem_safe.sh"
             st.warning(f"显存不足30GB ({gpu_info['total']:.1f}GB if available)，使用低显存模式")
         
         # 使用绝对路径
         cmd = [
             "bash",
-            str(SONG_GEN_DIR / script),
-            str(SONG_GEN_DIR / "ckpt/songgeneration_base/"),
+            str(get_absolute_path(str(PROJECT_ROOT / script))),  # 显式转换为字符串
+            str(get_absolute_path(str(SONG_GEN_DIR / "ckpt/songgeneration_base/"))),
             str(get_absolute_path(jsonl_path)),
             str(get_absolute_path(output_dir))
         ]
@@ -490,7 +490,7 @@ def setup_ui():
         col1, col2 = st.columns(2)
         with col1:
             force_standard = st.checkbox(
-                "强制使用标准模式(generate.sh)", 
+                "强制使用标准模式(generate_safe.sh)", 
                 help="忽略显存检测，强制使用标准生成模式(需要30GB以上显存)"
             )
         
@@ -592,7 +592,6 @@ if __name__ == "__main__":
         st.session_state.running_process = None
 
     os.environ.update({
-        'PYTHONDONTWRITEBYTECODE': '0',
         'TRANSFORMERS_CACHE': str(SONG_GEN_DIR / "third_party/hub"),
         'HF_HOME': str(SONG_GEN_DIR / "third_party/hub"),
         'NCCL_HOME': '/usr/local/tccl',

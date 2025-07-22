@@ -30,8 +30,13 @@ SONG_GEN_DIR = PROJECT_ROOT / "SongGeneration"
 
 def get_absolute_path(relative_path: str, project_root: Path = PROJECT_ROOT, song_gen_dir: Path = SONG_GEN_DIR) -> Path:
     """将相对路径转换为绝对路径"""
-    path = Path(relative_path)
-    if relative_path.startswith("ckpt/"):
+    if isinstance(relative_path, Path):  # 如果已经是Path对象直接返回
+        return relative_path
+        
+    path_str = str(relative_path)  # 确保输入是字符串
+    path = Path(path_str)
+    
+    if path_str.startswith("ckpt/"):  # 现在对字符串操作
         return song_gen_dir / path.relative_to("ckpt/")
     return project_root / path
 
