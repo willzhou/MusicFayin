@@ -23,18 +23,21 @@ import re
 from config import EMOTIONS, SINGER_GENDERS, GENRES, INSTRUMENTATIONS, TIMBRES, AUTO_PROMPT_TYPES
 from config import MUSIC_SECTION_TEMPLATES, STRUCTURE_TEMPLATES, SECTION_DEFINITIONS
 
+from api_handlers import call_deepseek_api, analyze_lyrics
+from func_utils import (
+    get_absolute_path,
+    parse_duration_to_seconds,
+    calculate_section_timings,
+    clean_generated_lyrics,
+    get_gpu_memory,
+    save_jsonl
+)
+from config import DEFAULT_BPM
 
 # 在文件顶部添加项目根目录定义
 PROJECT_ROOT = Path(__file__).parent  # 假设musicfayin.py现在放在SongGeneration的父目录
 SONG_GEN_DIR = PROJECT_ROOT / "SongGeneration"
  
-def get_absolute_path(relative_path: str) -> Path:
-    """将相对路径转换为绝对路径"""
-    path = Path(relative_path)
-    if relative_path.startswith("ckpt/"):
-        return SONG_GEN_DIR / path.relative_to("ckpt/")
-    return PROJECT_ROOT / path
-
 # 初始化session state
 if 'app_state' not in st.session_state:
     st.session_state.app_state = {
@@ -44,154 +47,7 @@ if 'app_state' not in st.session_state:
         'generated_jsonl': None,
         'music_files': []
     }
-
-    
-# ========================
-# 应用界面函数
-# ========================
-def call_deepseek_api(prompt: str, temperature: float = 0.7, max_tokens: int = 2000) -> str:
-    """调用DeepSeek API生成歌词"""
-    headers = {
-        "Authorization": f"Bearer {st.secrets['DEEPSEEK_API_KEY']}",
-        "Content-Type": "application/json"
-    }
-    
-    payload = {
-        "model": "deepseek-chat",
-        "messages": [{"role": "user", "content": prompt}],
-        "temperature": temperature,
-        "max_tokens": max_tokens
-    }
-    
-    try:
-        response = requests.post(st.secrets['DEEPSEEK_URL'], headers=headers, json=payload)
-        response.raise_for_status()
-        return response.json()["choices"][0]["message"]["content"]
-    except Exception as e:
-        st.error(f"API调用失败: {str(e)}")
-        return None
-
-def analyze_lyrics(lyrics: str) -> Dict[str, str]:
-    """分析歌词并返回音乐参数建议
-    
-    Args:
-        lyrics: 要分析的歌词文本
-        
-    Returns:
-        包含音乐参数的字典，格式为:
-        {
-            "emotion": str,
-            "genre": str,
-            "instrumentation": str,
-            "timbre": str,
-            "gender_suggestion": str
-        }
-        
-    Raises:
-        ValueError: 当API返回无效结果时
-    """
-    prompt = f"""请严格按以下JSON格式分析歌词特征：
-    {lyrics}
-    
-    返回格式必须为：
-    {{
-        "emotion": "从{sorted(EMOTIONS)}中选择",
-        "genre": "从{sorted(GENRES)}中选择1-2种",
-        "instrumentation": "从{sorted(INSTRUMENTATIONS)}中选择",
-        "timbre": "从{sorted(TIMBRES)}中选择",
-        "gender_suggestion": "从{sorted(SINGER_GENDERS)}中选择"
-    }}
-    
-    注意：
-    1. 必须返回合法JSON
-    2. 所有值必须来自给定选项
-    3. 不要包含任何额外文字"""
-    
-    max_retries = 3
-    last_exception = None
-    
-    for attempt in range(max_retries):
-        try:
-            result = call_deepseek_api(
-                prompt,
-                temperature=0.1,  # 降低随机性确保稳定输出
-                max_tokens=500
-            )
-            
-            if not result:
-                raise ValueError("API返回空结果")
-            
-            # 预处理API响应
-            cleaned_result = result.strip()
-            
-            # 处理可能的代码块标记
-            if cleaned_result.startswith("```json"):
-                cleaned_result = cleaned_result[7:].strip()
-            if cleaned_result.endswith("```"):
-                cleaned_result = cleaned_result[:-3].strip()
-            
-            # 解析JSON
-            analysis = json.loads(cleaned_result)
-            
-            # 验证结果
-            required_keys = ["emotion", "genre", "instrumentation", 
-                           "timbre", "gender_suggestion"]
-            if not all(key in analysis for key in required_keys):
-                raise ValueError(f"缺少必要字段，应有: {required_keys}")
-            
-            # 验证字段值有效性
-            if analysis["emotion"] not in EMOTIONS:
-                raise ValueError(f"无效情绪: {analysis['emotion']}，应为: {EMOTIONS}")
-                
-            if not any(g in analysis["genre"] for g in GENRES):
-                raise ValueError(f"无效类型: {analysis['genre']}，应为: {GENRES}")
-                
-            if analysis["instrumentation"] not in INSTRUMENTATIONS:
-                raise ValueError(f"无效乐器组合: {analysis['instrumentation']}，应为: {INSTRUMENTATIONS}")
-                
-            if analysis["timbre"] not in TIMBRES:
-                raise ValueError(f"无效音色: {analysis['timbre']}，应为: {TIMBRES}")
-                
-            if analysis["gender_suggestion"] not in SINGER_GENDERS:
-                raise ValueError(f"无效性别建议: {analysis['gender_suggestion']}，应为: {SINGER_GENDERS}")
-            
-            # 返回验证通过的结果
-            return {
-                "emotion": analysis["emotion"],
-                "genre": analysis["genre"],
-                "instrumentation": analysis["instrumentation"],
-                "timbre": analysis["timbre"],
-                "gender_suggestion": analysis["gender_suggestion"]
-            }
-            
-        except json.JSONDecodeError as e:
-            last_exception = f"JSON解析失败: {str(e)}，原始响应: {result}"
-            st.warning(f"尝试 {attempt + 1}/{max_retries}: {last_exception}")
-            continue
-            
-        except ValueError as e:
-            last_exception = str(e)
-            st.warning(f"尝试 {attempt + 1}/{max_retries}: {last_exception}")
-            continue
-            
-        except Exception as e:
-            last_exception = str(e)
-            st.warning(f"尝试 {attempt + 1}/{max_retries}: 未知错误: {last_exception}")
-            continue
-    
-    # 所有重试都失败后的处理
-    error_msg = f"歌词分析失败，将使用默认参数。最后错误: {last_exception}"
-    st.error(error_msg)
-    
-    # 返回保守默认值
-    return {
-        "emotion": "emotional",
-        "genre": "pop",
-        "instrumentation": "piano and strings",
-        "timbre": "warm",
-        "gender_suggestion": "female"
-    }
-
+  
 
 # ========================
 # 辅助函数
@@ -209,77 +65,6 @@ def calc_lines_from_seconds(seconds: int) -> str:
     min_lines = max(2, seconds // 5)  # 每行最多5秒
     max_lines = max(4, seconds // 3)  # 每行最少3秒
     return f"{min_lines}-{max_lines}行"
-
-def parse_duration_to_seconds(duration_str: str) -> int:
-    """将中文时长字符串转换为秒数"""
-    try:
-        # 处理"X分Y秒"格式
-        if "分" in duration_str and "秒" in duration_str:
-            minutes = int(re.search(r"(\d+)分", duration_str).group(1))
-            seconds = int(re.search(r"(\d+)秒", duration_str).group(1))
-            return minutes * 60 + seconds
-        
-        # 处理只有分钟的格式
-        if "分" in duration_str:
-            return int(duration_str.replace("分", "")) * 60
-        
-        # 处理纯秒数格式
-        if "秒" in duration_str:
-            return int(duration_str.replace("秒", ""))
-        
-        # 默认处理纯数字
-        return int(duration_str)
-    except Exception as e:
-        raise ValueError(f"无效的时长格式: '{duration_str}'") from e
-
-def calculate_section_timings(sections: List[str], total_seconds: int) -> Dict[str, int]:
-    """计算每个段落的时长分配"""
-    # 1. 验证所有段落是否定义
-    for section in sections:
-        if section not in MUSIC_SECTION_TEMPLATES:
-            raise ValueError(f"未定义的段落类型: {section}")
-    
-    # 2. 计算总基准时长
-    total_baseline = sum(
-        MUSIC_SECTION_TEMPLATES[sec]["duration_avg"] 
-        for sec in sections
-    )
-    
-    # 3. 检查是否包含bridge段落
-    has_bridge = "bridge" in sections
-    
-    # 4. 分配时长
-    section_timings = {}
-    remaining_seconds = total_seconds
-    
-    # 先分配verse和chorus段落
-    for section in [sec for sec in sections if sec in ["verse", "chorus"]]:
-        allocated = int(MUSIC_SECTION_TEMPLATES[section]["duration_avg"] * total_seconds / total_baseline)
-        allocated = max(15, min(45, allocated))  # 限制15-45秒
-        section_timings[section] = allocated
-        remaining_seconds -= allocated
-    
-    # 如果有bridge段落，分配时长
-    if has_bridge:
-        bridge_seconds = int(MUSIC_SECTION_TEMPLATES["bridge"]["duration_avg"] * total_seconds / total_baseline)
-        bridge_seconds = max(10, min(30, bridge_seconds))  # 限制10-30秒
-        section_timings["bridge"] = bridge_seconds
-        remaining_seconds -= bridge_seconds
-    
-    # 分配器乐段落
-    instrumental_sections = [sec for sec in sections if sec not in ["verse", "chorus", "bridge"]]
-    for section in instrumental_sections:
-        allocated = int(MUSIC_SECTION_TEMPLATES[section]["duration_avg"] * total_seconds / total_baseline)
-        allocated = max(5, min(30, allocated))  # 限制5-30秒
-        section_timings[section] = allocated
-        remaining_seconds -= allocated
-    
-    # 处理剩余时间（加到最后一个段落）
-    if remaining_seconds > 0:
-        last_section = sections[-1]
-        section_timings[last_section] += remaining_seconds
-    
-    return section_timings
 
 
 def generate_lyrics_with_duration(
@@ -370,35 +155,19 @@ def generate_jsonl_entries(prefix: str, lyrics: str, analysis: Dict[str, Any], p
             "descriptions": (
                 f"{analysis['gender_suggestion']}, {analysis['timbre']}, "
                 f"{analysis['genre']}, {analysis['emotion']}, "
-                f"{analysis['instrumentation']}, the bpm is 125"
+                f"{analysis['instrumentation']}, the bpm is {analysis.get('bpm', DEFAULT_BPM)}"
             ),
             "gt_lyric": lyrics
         },
         {
             "idx": f"{prefix}_audioprompt_{timestamp}",
             "gt_lyric": lyrics,
-            "prompt_audio_path": prompt_audio_path  # 使用传入的路径
+            "prompt_audio_path": prompt_audio_path
         }
     ]
     
     return entries
 
-def save_jsonl(entries: List[Dict], filename: str) -> str:
-    """保存JSONL文件"""
-    output_dir = get_absolute_path("output")
-    output_dir.mkdir(exist_ok=True)
-    filepath = output_dir / filename
-    
-    with open(filepath, "w", encoding="utf-8") as f:
-        for entry in entries:
-            # 确保所有值都是可序列化的
-            serializable_entry = {
-                k: str(v) if not isinstance(v, (str, int, float, bool, list, dict)) else v
-                for k, v in entry.items()
-            }
-            f.write(json.dumps(serializable_entry, ensure_ascii=False) + "\n")
-    
-    return str(filepath)
 
 # 在全局变量或session_state中添加运行状态标志
 if 'running_process' not in st.session_state:
@@ -525,80 +294,6 @@ def display_generated_files(output_dir: str):
                 )
 
 
-def clean_generated_lyrics(raw_lyrics: str) -> str:
-    """
-    格式化原始歌词文本：
-    1. 段落间用" ; "分隔
-    2. 所有人声段落中的行用"."分隔
-    3. 将所有中文标点和空格替换为英文句点
-    4. 器乐段落不包含内容
-    
-    Args:
-        raw_lyrics: 包含段落标记的原始歌词文本
-        
-    Returns:
-        格式化后的歌词字符串
-    """
-    # 替换规则：中文标点和空格都改为英文句点
-    replace_rules = {
-        ' ': '.',  # 空格
-        '，': '.', '。': '.', '、': '.', '；': '.', '：': '.',
-        '？': '.', '！': '.', '「': '.', '」': '.', '『': '.',
-        '』': '.', '（': '.', '）': '.', '《': '.', '》': '.',
-        '【': '.', '】': '.', '『': '.', '』': '.', '〔': '.',
-        '〕': '.', '—': '.', '～': '.', '…': '.', '·': '.'
-    }
-    
-    sections = []
-    current_section = None
-    current_lines = []
-    
-    for line in raw_lyrics.split('\n'):
-        line = line.strip()
-        if not line:
-            continue
-        
-        # 检测段落标记如[verse]
-        section_match = re.match(r'^\[([a-z\-]+)\]$', line)
-        if section_match:
-            if current_section is not None:
-                sections.append((current_section, current_lines))
-            current_section = section_match.group(1)
-            current_lines = []
-        elif current_section is not None:
-            # 替换所有指定字符为句点
-            cleaned_line = ''.join(
-                replace_rules.get(char, char) 
-                for char in line
-            ).strip('.')  # 去除首尾多余的句点
-            
-            # 合并连续的句点为一个
-            cleaned_line = re.sub(r'\.+', '.', cleaned_line)
-            
-            if cleaned_line:
-                current_lines.append(cleaned_line)
-    
-    # 添加最后一段
-    if current_section is not None:
-        sections.append((current_section, current_lines))
-    
-    # 格式化各段落
-    formatted_sections = []
-    for section_type, lines in sections:
-        if section_type in ['verse', 'chorus', 'bridge']:
-            # 人声段落：用"."连接行，并确保不重复
-            content = ".".join(
-                line.rstrip('.') for line in lines 
-                if line and line != '.'
-            )
-            formatted = f"[{section_type}] {content}" if content else f"[{section_type}]"
-        else:
-            # 器乐段落：不包含内容
-            formatted = f"[{section_type}]"
-        formatted_sections.append(formatted)
-    
-    return " ; ".join(formatted_sections)
-
 
 def replace_chinese_punctuation(text):
     """替换中文标点为英文标点"""
@@ -634,25 +329,6 @@ def display_duration_breakdown(sections: List[str], total_seconds: int):
     )
     st.plotly_chart(fig, use_container_width=True)
 
-
-def get_gpu_memory():
-    """获取GPU显存信息（单位：GB）"""
-    try:
-        if torch.cuda.is_available():
-            device = torch.cuda.current_device()
-            total_memory = torch.cuda.get_device_properties(device).total_memory / (1024**3)  # 转换为GB
-            used_memory = torch.cuda.memory_allocated(device) / (1024**3)
-            free_memory = total_memory - used_memory
-            return {
-                "total": total_memory,
-                "used": used_memory,
-                "free": free_memory
-            }
-        return None
-    except Exception as e:
-        st.warning(f"无法获取GPU显存信息: {str(e)}")
-        return None
-    
 
 # 典型结构模板
 # ========================
@@ -769,7 +445,7 @@ def setup_ui():
     if st.session_state.app_state.get('analysis_result'):
         st.header("第三步: 参数调整")
         
-        col1, col2 = st.columns(2)
+        col1, col2, col3 = st.columns(3)
         
         with col1:
             # 使用分析结果或提供默认值
@@ -814,6 +490,31 @@ def setup_ui():
                 "乐器组合", INSTRUMENTATIONS,
                 index=INSTRUMENTATIONS.index(default_instrument)
             )
+        with col3:
+            # 添加BPM控制
+            default_bpm = st.session_state.app_state['analysis_result'].get('bpm', DEFAULT_BPM)
+            st.session_state.app_state['analysis_result']['bpm'] = st.slider(
+                "BPM (每分钟节拍数)",
+                min_value=60,
+                max_value=160,
+                value=default_bpm,
+                step=1,
+                help="建议值: 慢速60-80, 中速80-120, 快速120-160"
+            )
+            
+            # 显示BPM对应的音乐类型
+            bpm = st.session_state.app_state['analysis_result']['bpm']
+            tempo_type = "slow" if bpm < 80 else ("fast" if bpm > 120 else "medium")
+            st.markdown(f"**速度类型**: {tempo_type} ({bpm} BPM)")
+            
+            # 可视化BPM
+            st.markdown("**节奏参考**:")
+            if bpm < 80:
+                st.markdown("🎵 慢速 (抒情、民谣)")
+            elif 80 <= bpm <= 120:
+                st.markdown("🎵 中速 (流行、摇滚)")
+            else:
+                st.markdown("🎵 快速 (舞曲、电子)")
 
     # 步骤4: 生成JSONL
     if st.session_state.app_state.get('analysis_result'):
