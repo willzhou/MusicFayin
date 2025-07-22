@@ -69,6 +69,12 @@ AUTO_PROMPT_TYPES = ['Pop', 'R&B', 'Dance', 'Jazz', 'Folk', 'Rock',
                     'Chinese Style', 'Chinese Tradition', 'Metal', 
                     'Reggae', 'Chinese Opera', 'Auto']
 
+BPM_RANGES = {
+    'slow': (60, 80),
+    'medium': (80, 120),
+    'fast': (120, 160)
+}
+DEFAULT_BPM = 100
 
 # 在常量定义部分添加音乐段落时长配置
 MUSIC_SECTION_TEMPLATES = {
