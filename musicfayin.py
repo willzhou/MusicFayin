@@ -37,7 +37,7 @@ from config import DEFAULT_BPM
 # 在文件顶部添加项目根目录定义
 PROJECT_ROOT = Path(__file__).parent  # 假设musicfayin.py现在放在SongGeneration的父目录
 SONG_GEN_DIR = PROJECT_ROOT / "SongGeneration"
- 
+
 # 初始化session state
 if 'app_state' not in st.session_state:
     st.session_state.app_state = {
@@ -136,19 +136,24 @@ def generate_lyrics_with_duration(
 
     
 
-def generate_jsonl_entries(prefix: str, lyrics: str, analysis: Dict[str, Any], prompt_audio_path: str = "input/sample_prompt_audio.wav") -> List[Dict]:
-    """生成所有JSONL条目"""
+def generate_jsonl_entries(prefix: str, lyrics: str, analysis: Dict[str, Any], 
+                         prompt_audio_path: str = "input/sample_prompt_audio.wav") -> List[Dict]:
+    """生成所有JSONL条目，并添加类型标识"""
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     
     entries = [
         {
             "idx": f"{prefix}_autoprompt_{timestamp}",
             "gt_lyric": lyrics,
-            "auto_prompt_audio_type": "Auto"
+            "auto_prompt_audio_type": "Auto",
+            "bpm": analysis.get('bpm', DEFAULT_BPM),
+            "entry_type": "autoprompt"  # 添加类型标识
         },
         {
             "idx": f"{prefix}_noprompt_{timestamp}",
-            "gt_lyric": lyrics
+            "gt_lyric": lyrics,
+            "bpm": analysis.get('bpm', DEFAULT_BPM),
+            "entry_type": "noprompt"  # 添加类型标识
         },
         {
             "idx": f"{prefix}_textprompt_{timestamp}",
@@ -157,12 +162,16 @@ def generate_jsonl_entries(prefix: str, lyrics: str, analysis: Dict[str, Any], p
                 f"{analysis['genre']}, {analysis['emotion']}, "
                 f"{analysis['instrumentation']}, the bpm is {analysis.get('bpm', DEFAULT_BPM)}"
             ),
-            "gt_lyric": lyrics
+            "gt_lyric": lyrics,
+            "bpm": analysis.get('bpm', DEFAULT_BPM),
+            "entry_type": "textprompt"  # 添加类型标识
         },
         {
             "idx": f"{prefix}_audioprompt_{timestamp}",
             "gt_lyric": lyrics,
-            "prompt_audio_path": prompt_audio_path
+            "prompt_audio_path": prompt_audio_path,
+            "bpm": analysis.get('bpm', DEFAULT_BPM),
+            "entry_type": "audioprompt"  # 添加类型标识
         }
     ]
     
@@ -560,16 +569,40 @@ def setup_ui():
                 prefix,
                 st.session_state.app_state['lyrics'],
                 st.session_state.app_state['analysis_result'],
-                prompt_audio_path  # 传入自定义的音频路径
+                prompt_audio_path
             )
             
+            # 添加条目选择界面
+            st.subheader("选择要保留的配置条目")
+            col1, col2, col3, col4 = st.columns(4)
+            
+            # 默认选中第3和第4条
+            default_selected = [False, False, True, True]
+            selected = [
+                col1.checkbox("自动提示", value=default_selected[0], key="autoprompt"),
+                col2.checkbox("无提示", value=default_selected[1], key="noprompt"),
+                col3.checkbox("文本提示", value=default_selected[2], key="textprompt"),
+                col4.checkbox("音频提示", value=default_selected[3], key="audioprompt")
+            ]
+            
+            # 过滤选中的条目
+            filtered_entries = [entry for entry, select in zip(entries, selected) if select]
+            
+            if not filtered_entries:
+                st.warning("请至少选择一条配置")
+                return
+            
             filename = f"{prefix}_config_{datetime.now().strftime('%Y%m%d_%H%M%S')}.jsonl"
-            filepath = save_jsonl(entries, filename)
+            filepath = save_jsonl(filtered_entries, filename)
             
             st.session_state.app_state['generated_jsonl'] = filepath
+            st.session_state.app_state['selected_entries'] = filtered_entries  # 保存选中的条目
+            
             st.success(f"JSONL文件已生成: {filepath}")
             
-            for entry in entries:
+            # 显示选中的条目
+            st.subheader("选中的配置条目")
+            for entry in filtered_entries:
                 st.json(entry)
 
     # 步骤5: 生成音乐

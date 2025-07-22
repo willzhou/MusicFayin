@@ -22,7 +22,11 @@ from config import (
     STRUCTURE_TEMPLATES, SECTION_DEFINITIONS
 )
 
-def get_absolute_path(relative_path: str, project_root: Path, song_gen_dir: Path) -> Path:
+# 在文件顶部添加项目根目录定义
+PROJECT_ROOT = Path(__file__).parent  # 假设musicfayin.py现在放在SongGeneration的父目录
+SONG_GEN_DIR = PROJECT_ROOT / "SongGeneration"
+
+def get_absolute_path(relative_path: str, project_root: Path = PROJECT_ROOT, song_gen_dir: Path = SONG_GEN_DIR) -> Path:
     """将相对路径转换为绝对路径"""
     path = Path(relative_path)
     if relative_path.startswith("ckpt/"):
@@ -179,8 +183,9 @@ def get_gpu_memory() -> Optional[Dict[str, float]]:
     except Exception:
         return None
 
-def save_jsonl(entries: List[Dict], filename: str, output_dir: Path) -> str:
+def save_jsonl(entries: List[Dict], filename: str) -> str:
     """保存JSONL文件"""
+    output_dir = get_absolute_path("output")
     output_dir.mkdir(exist_ok=True)
     filepath = output_dir / filename
     

@@ -11,7 +11,7 @@ import streamlit as st
 import json
 import requests
 from typing import Dict, Optional
-from config import EMOTIONS, GENRES, INSTRUMENTATIONS, TIMBRES, SINGER_GENDERS
+from config import EMOTIONS, GENRES, INSTRUMENTATIONS, TIMBRES, SINGER_GENDERS, DEFAULT_BPM
 
 
 def call_deepseek_api(prompt: str, temperature: float = 0.7, max_tokens: int = 2000) -> str:
