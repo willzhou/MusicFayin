@@ -1,11 +1,63 @@
 # Author: Ningbo Wise Effects, Inc. (汇视创影) & Will Zhou
 # License: Apache 2.0
 
+import json
 import streamlit as st
+from typing import Dict, Any
 
 # 常量定义
-DEEPSEEK_API_KEY = st.secrets['DEEPSEEK_API_KEY'] # 换成你自己的API KEY
-DEEPSEEK_URL = st.secrets['DEEPSEEK_URL']
+# DEEPSEEK_API_KEY = st.secrets['DEEPSEEK_API_KEY'] # 换成你自己的API KEY
+# DEEPSEEK_URL = st.secrets['DEEPSEEK_URL']
+API_URL = st.secrets['API_URL']
+API_KEY = st.secrets['API_KEY']
+
+# 支持的模型列表
+SUPPORTED_MODELS = {
+    "moonshotai/kimi-k2:free": {
+        "api_base": "https://openrouter.ai/api/v1",
+        "max_tokens": 4096,
+        "temperature_range": (0.1, 1.0)
+    },
+    "deepseek-chat": {
+        "api_base": "https://api.deepseek.com/v1",
+        "max_tokens": 2048,
+        "temperature_range": (0.5, 1.0)
+    }
+}
+
+def update_supported_models(config_path: str) -> Dict[str, Any]:
+    """
+    从JSON配置文件更新SUPPORTED_MODELS字典
+    
+    :param config_path: JSON配置文件路径
+    :return: 更新后的模型配置字典
+    """   
+    try:
+        # 读取JSON配置文件
+        with open(config_path, 'r', encoding='utf-8') as f:
+            config_data = json.load(f)
+        
+        # 更新配置 - 这里采用合并策略，新配置会覆盖旧配置
+        for model_name, model_config in config_data.items():
+            if model_name in SUPPORTED_MODELS:
+                SUPPORTED_MODELS[model_name].update(model_config)
+            else:
+                SUPPORTED_MODELS[model_name] = model_config
+                
+        return SUPPORTED_MODELS
+    
+    except FileNotFoundError:
+        print(f"警告: 配置文件 {config_path} 未找到，返回原始配置")
+        return SUPPORTED_MODELS
+    except json.JSONDecodeError:
+        print(f"错误: 配置文件 {config_path} 不是有效的JSON格式")
+        return SUPPORTED_MODELS
+ 
+# 使用示例
+SUPPORTED_MODELS = update_supported_models("models_config.json")
+
+# 默认模型配置
+DEFAULT_MODEL = "deepseek-chat"
 
 # “悲伤的”、“情绪的”、“愤怒的”、“快乐的”、“令人振奋的”、“强烈的”、“浪漫的”、“忧郁的”
 EMOTIONS = [

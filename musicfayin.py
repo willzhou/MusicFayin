@@ -13,6 +13,7 @@ from pathlib import Path
 
 from config import EMOTIONS, SINGER_GENDERS, GENRES, INSTRUMENTATIONS, TIMBRES
 from config import MUSIC_SECTION_TEMPLATES, STRUCTURE_TEMPLATES
+from config import DEFAULT_MODEL, SUPPORTED_MODELS
 
 from api_handlers import (
     generate_lyrics_with_duration, 
@@ -216,6 +217,62 @@ def display_generated_files(output_dir: str):
 # ========================
 # Streamlit 界面
 # ========================
+def model_management_tab():
+    """模型管理标签页"""
+    tab1, tab2, tab3 = st.tabs(["选择模型", "添加模型", "删除模型"])
+    
+    with tab1:
+        selected = st.selectbox(
+            "当前模型",
+            options=list(SUPPORTED_MODELS.keys()),
+            index=list(SUPPORTED_MODELS.keys()).index(
+                st.session_state.get('selected_model', DEFAULT_MODEL)
+            ),
+            key='model_selector'
+        )
+        st.session_state.selected_model = selected
+        st.info(f"已选择: {selected}")
+        
+        # 显示模型详情
+        #if selected in SUPPORTED_MODELS:
+        #    st.json(SUPPORTED_MODELS[selected])
+    
+    with tab2: # TODO:
+        with st.form("add_model_form"):
+            model_name = st.text_input("模型名称", 
+                help="如: anthropic/claude-3")
+            api_base = st.text_input("API地址",
+                help="如: https://api.anthropic.com/v1")
+            max_tokens = st.number_input("最大token数", 
+                min_value=512, max_value=32768, value=4096)
+            temp_min = st.slider("最小温度", 0.0, 1.0, 0.1)
+            temp_max = st.slider("最大温度", 0.0, 1.0, 1.0)
+            api_key = st.text_input("API密钥", type="password")
+            
+            if st.form_submit_button("添加模型"):
+                if model_name and api_base:
+                    SUPPORTED_MODELS[model_name] = {
+                        "api_base": api_base,
+                        "max_tokens": max_tokens,
+                        "temperature_range": (temp_min, temp_max)
+                    }
+                    # 保存到secrets (需要手动处理)
+                    st.session_state.secrets[f"{model_name.replace('/', '_')}_API_KEY"] = api_key
+                    st.success(f"已添加模型: {model_name}")
+                else:
+                    st.error("请填写完整信息")
+    
+    with tab3: # TODO:
+        model_to_delete = st.selectbox(
+            "选择要删除的模型",
+            options=[m for m in SUPPORTED_MODELS.keys() if m != DEFAULT_MODEL],
+            index=0
+        )
+        if st.button("删除模型"):
+            if model_to_delete in SUPPORTED_MODELS:
+                del SUPPORTED_MODELS[model_to_delete]
+                st.success(f"已删除模型: {model_to_delete}")
+
 def setup_ui():
     """设置Streamlit用户界面"""
     st.title("🎵 MusicFayIn 人工智能音乐生成系统")
@@ -223,7 +280,7 @@ def setup_ui():
     # 步骤1: 歌词生成
     st.header("第一步: 生成歌词")
     
-    col1, col2 = st.columns([3, 2])
+    col1, col2 = st.columns([5, 2])
     
     with col1:
         lyric_prompt = st.text_area("输入歌词主题", "如果能重来")
@@ -291,7 +348,8 @@ def setup_ui():
             lyrics = generate_lyrics_with_duration(
                 lyric_prompt=lyric_prompt,
                 template=template,
-                song_length=song_length
+                song_length=song_length,
+                model=st.session_state.selected_model
             )
 
             if lyrics:
@@ -401,7 +459,7 @@ def setup_ui():
     if st.session_state.app_state.get('analysis_result'):
         st.header("第四步: 生成配置")
         
-        prefix = st.text_input("ID前缀", "sample_01")
+        prefix = st.text_input("ID前缀", lyric_prompt[:5])
         
         # 添加生成类型选择
         gen_type = st.radio(
@@ -560,6 +618,10 @@ def setup_ui():
         except Exception as e:
             st.error(f"生成过程中发生错误: {str(e)}")
 
+    # 在侧边栏添加模型管理
+    with st.sidebar:
+        st.header("模型管理")
+        model_management_tab()
 
     # 侧边栏说明
     st.sidebar.markdown("""
@@ -569,12 +631,6 @@ def setup_ui():
     3. **调整参数**：根据需要修改参数
     4. **生成配置**：创建JSONL配置文件
     5. **生成音乐**：运行生成脚本
-
-    ### 生成选项
-    - 自动生成 (autoprompt)
-    - 无提示生成 (noprompt)
-    - 文本提示生成 (textprompt)
-    - 音频提示生成 (audioprompt)
     """)
 
     # 系统监控

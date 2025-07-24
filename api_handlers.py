@@ -14,25 +14,73 @@ import requests
 from typing import Dict, Optional, List, Any
 from config import EMOTIONS, GENRES, INSTRUMENTATIONS, TIMBRES, SINGER_GENDERS, DEFAULT_BPM
 from config import MUSIC_SECTION_TEMPLATES
+from config import SUPPORTED_MODELS, DEFAULT_MODEL
 
 import plotly.express as px
 
-def call_deepseek_api(prompt: str, temperature: float = 0.7, max_tokens: int = 2000) -> str:
-    """调用DeepSeek API生成歌词"""
+def call_llm_api(
+    prompt: str,
+    model: str = None,
+    temperature: float = 0.7,
+    max_tokens: int = 2000
+) -> str:
+    """通用LLM API调用函数"""
+    if model is None:
+        model = st.session_state.get('selected_model', DEFAULT_MODEL)
+    
+    model_config = SUPPORTED_MODELS.get(model)
+    if not model_config:
+        raise ValueError(f"不支持的模型: {model}")
+    
+    # 从secrets获取API密钥
+    api_key = st.secrets.get(f"{model.replace('/', '_').replace(':', '_')}_API_KEY")
+    if not api_key:
+        raise ValueError(f"未配置模型 {model} 的API密钥")
+    
     headers = {
-        "Authorization": f"Bearer {st.secrets['DEEPSEEK_API_KEY']}",
+        "Authorization": f"Bearer {api_key}",
         "Content-Type": "application/json"
     }
     
     payload = {
-        "model": "deepseek-chat",
+        "model": model, # model.split(':')[0],  # 去除可能的后缀
+        "messages": [{"role": "user", "content": prompt}],
+        "temperature": temperature,
+        # "temperature": max(model_config['temperature_range'][0], 
+        #                   min(temperature, model_config['temperature_range'][1])),
+        "max_tokens": min(max_tokens, model_config['max_tokens'])
+    }
+    
+    try:
+        # st.info(model_config["api_base"])
+        # st.info(headers)
+        response = requests.post(
+            model_config['api_base'] + "/chat/completions", # model_config['api_base'],
+            headers=headers,
+            json=payload
+        )
+        response.raise_for_status()
+        return response.json()["choices"][0]["message"]["content"]
+    except Exception as e:
+        st.error(f"{model} API调用失败: {str(e)}")
+        return None
+
+def call_llm_api_v1(prompt: str, model = "deepseek-chat", temperature: float = 0.7, max_tokens: int = 2000) -> str:
+    """调用DeepSeek等LLM API生成歌词"""
+    headers = {
+        "Authorization": f"Bearer {st.secrets['API_KEY']}",
+        "Content-Type": "application/json"
+    }
+    
+    payload = {
+        "model": model,
         "messages": [{"role": "user", "content": prompt}],
         "temperature": temperature,
         "max_tokens": max_tokens
     }
     
     try:
-        response = requests.post(st.secrets['DEEPSEEK_URL'], headers=headers, json=payload)
+        response = requests.post(st.secrets['API_URL'], headers=headers, json=payload)
         response.raise_for_status()
         return response.json()["choices"][0]["message"]["content"]
     except Exception as e:
@@ -141,7 +189,8 @@ def display_duration_breakdown(sections: List[str], total_seconds: int):
 def generate_lyrics_with_duration(
     lyric_prompt: str,
     template: Dict[str, Any],
-    song_length: str
+    song_length: str,
+    model: str = None
 ) -> Optional[str]:
     """生成带时长控制的歌词"""
     try:
@@ -178,7 +227,7 @@ def generate_lyrics_with_duration(
             副歌第二行
             ...""",
             f"总时长：{song_length} ({total_seconds}秒)",
-            "段落时长分配："
+            "段落时长分配：" # 下面继续添加
         ]
         
         # 添加各段落信息
@@ -200,7 +249,7 @@ def generate_lyrics_with_duration(
         
         prompt = "\n".join(prompt_lines)
         
-        return call_deepseek_api(prompt)
+        return call_llm_api(prompt, model=model)
     except Exception as e:
         st.error(f"歌词生成失败: {str(e)}")
         return None
@@ -248,7 +297,7 @@ def analyze_lyrics(lyrics: str) -> Dict[str, str]:
     
     for attempt in range(max_retries):
         try:
-            result = call_deepseek_api(
+            result = call_llm_api(
                 prompt,
                 temperature=0.5,  # 降低随机性确保稳定输出
                 max_tokens=500

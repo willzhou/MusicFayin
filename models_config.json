@@ -1,0 +1,7 @@
+{
+    "anthropic/claude-3": {
+        "api_base": "https://api.anthropic.com/v1",
+        "max_tokens": 4096,
+        "temperature_range": [0.1, 1.0]
+    }
+}
