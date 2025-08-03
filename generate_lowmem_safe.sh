@@ -51,10 +51,19 @@ echo "GEN_TYPE: $GEN_TYPE"
 
 # 执行主程序
 cd $BASE_DIR
-python3 "${BASE_DIR}/generate_lowmem.py" \
-    "$CKPT_PATH" \
-    "$JSONL" \
-    "$SAVE_DIR" \
-    "$GEN_TYPE"
-
-echo "[$(date)] Generation completed successfully"
+# usage: generate.py [-h] --ckpt_path CKPT_PATH --input_jsonl INPUT_JSONL
+#                    --save_dir SAVE_DIR [--generate_type GENERATE_TYPE]
+#                                       [--use_flash_attn] [--low_mem]
+if python3 "${BASE_DIR}/generate.py" \
+    --ckpt_path "$CKPT_PATH" \
+    --input_jsonl "$JSONL" \
+    --save_dir "$SAVE_DIR" \
+    --generate_type "$GEN_TYPE" \
+    --use_flash_attn \
+    --low_mem
+then
+    echo "[$(date)] Generation completed successfully"
+else
+    echo "[$(date)] Generation failed with error code $?"
+    exit 1
+fi

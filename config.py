@@ -59,10 +59,111 @@ SUPPORTED_MODELS = update_supported_models("models_config.json")
 # 默认模型配置
 DEFAULT_MODEL = "deepseek-chat"
 
-# “悲伤的”、“情绪的”、“愤怒的”、“快乐的”、“令人振奋的”、“强烈的”、“浪漫的”、“忧郁的”
+# 情绪
 EMOTIONS = [
+    # 基础情绪 “悲伤的”、“情绪的”、“愤怒的”、“快乐的”、
     "sad", "emotional", "angry", "happy", 
-    "uplifting", "intense", "romantic", "melancholic"
+    # “令人振奋的”、“强烈的”、“浪漫的”、“忧郁的”
+    "uplifting", "intense", "romantic", "melancholic",
+
+    # 更多基础情绪
+    "joyful", # 纯粹的快乐（流行舞曲）
+    "heartbroken", # 心碎（抒情 ballad）
+    "furious", # 暴怒（金属/摇滚）
+    "peaceful", # 宁静（轻音乐）
+
+    # 能量型
+    "empowering",     # 励志（ anthem 歌曲）
+    "euphoric",       # 狂喜（EDM 高潮）
+    "defiant",        # 叛逆（朋克摇滚）
+
+    # 爱情相关
+    "romantic",       # 浪漫（经典情歌）
+    "sensual",        # 情欲（R&B）
+    "bittersweet",    # 苦乐参半（分手歌）
+    "unrequited",     # 单相思（忧郁情歌）
+
+    # 忧郁/深沉
+    "melancholic",    # 忧郁（民谣）
+    "nostalgic",      # 怀旧（复古风）
+    "lonely",         # 孤独（钢琴曲）
+    "regretful",      # 悔恨（蓝调）
+
+    # 特殊状态
+    "anxious",        # 焦虑（另类摇滚）
+    "dreamy",         # 梦幻（shoegaze）
+    "mysterious",     # 神秘（电影配乐）
+
+    # 积极能量
+    "hopeful",        # 充满希望（福音）
+    "playful",        # 俏皮（泡泡糖流行）
+    "carefree",       # 无忧无虑（夏日单曲）
+
+    # 强烈情感
+    "desperate",      # 绝望（emo）
+    "vengeful",       # 复仇（暗黑系）
+    "triumphant",     # 凯旋（史诗音乐）
+
+    # 复杂情绪
+    "conflicted",     # 矛盾（另类R&B）
+    "wistful",        # 惆怅（独立民谣）
+    "vulnerable",     # 脆弱（灵魂乐）
+
+    # 氛围型
+    "ethereal",       # 空灵（氛围电子）
+    "haunting",       # 萦绕（恐怖配乐）
+    "hypnotic"        # 催眠（迷幻音乐）
+
+    # 组合型 --- 
+    # 1. 爱情混合体
+    "love-hate",              # 爱恨交织（另类R&B）
+    "passionate-fear",        # 热烈又恐惧（拉丁情歌）
+    "romantic-nostalgia",     # 浪漫怀旧（复古流行）
+    
+    # 2. 痛苦与治愈
+    "broken-but-healing",     # 破碎中自愈（民谣摇滚）
+    "sad-yet-hopeful",        # 悲伤但抱有希望（钢琴 ballad）
+    "tears-of-joy",           # 喜极而泣（福音流行）
+    
+    # 3. 矛盾心理
+    "wanting-but-fearing",    # 渴望又害怕（另类摇滚）
+    "guilty-pleasure",        # 罪恶快感（暗黑流行）
+    "selfish-devotion",       # 自私的奉献（灵魂乐）
+    
+    # 4. 社会情绪
+    "angry-empathy",          # 愤怒的共情（抗议歌曲）
+    "isolated-but-connected", # 孤独却共鸣（电子民谣）
+    "numb-but-feeling",       # 麻木中感知（emo rap）
+    
+    # 5. 成长阵痛
+    "proud-and-ashamed",      # 骄傲与羞愧（成长叙事）
+    "lost-but-finding",       # 迷失中探索（独立摇滚）
+    "scared-but-brave",       # 恐惧却勇敢（电影主题曲）
+    
+    # 6. 超现实组合
+    "dreamlike-terror",       # 梦幻式恐惧（另类电子）
+    "mechanical-loneliness",  # 机械孤独（赛博朋克）
+    "violent-tenderness",     # 暴烈的温柔（后硬核）
+    
+    # 7. 时间相关
+    "nostalgic-dread",        # 怀旧式焦虑（合成器浪潮）
+    "future-nostalgia",       # 未来怀旧（Dua Lipa 风格）
+    "present-absent",         # 身在心不在（迷幻流行）
+    
+    # 8. 自然隐喻
+    "stormy-calm",            # 暴风雨前的平静（史诗摇滚）
+    "frozen-fire",            # 冰与火（力量金属）
+    "sunshine-melancholy",    # 阳光忧郁（独立流行）
+    
+    # 9. 感官冲突
+    "sweet-pain",             # 甜蜜的痛苦（另类R&B）
+    "bitter-bliss",           # 苦涩的幸福（爵士民谣）
+    "soft-destruction",       # 温柔的毁灭（氛围后摇）
+    
+    # 10. 终极矛盾
+    "holy-sinful",            # 神圣与罪恶（福音摇滚）
+    "chaotic-order",          # 混乱中的秩序（数学摇滚）
+    "loud-silence"            # 震耳欲聋的沉默（后朋克）
 ]
 
 SINGER_GENDERS = ["male", "female"]
@@ -72,15 +173,18 @@ SINGER_GENDERS = ["male", "female"]
 # “舞曲电子”、“乡村摇滚”、“舞曲、舞曲流行、浩室、流行”、“雷鬼”、“实验”、“舞曲、
 # 流行”、“舞曲、深浩室、电子”、“韩国流行音乐”、“实验流行”、“流行朋克”、“摇滚乐”、
 # “节奏布鲁斯”、“多样”、“流行摇滚”
-GENRES = [
-    'Auto', 'Chinese Tradition', 'Metal', 'Reggae', 'Chinese Opera',
-    "pop", "electronic", "hip hop", "rock", "jazz", "blues", "classical",
-    "rap", "country", "classic rock", "hard rock", "folk", "soul",
-    "dance, electronic", "rockabilly", "dance, dancepop, house, pop",
-    "reggae", "experimental", "dance, pop", "dance, deephouse, electronic",
-    "k-pop", "experimental pop", "pop punk", "rock and roll", "R&B",
-    "varies", "pop rock",
-]
+# GENRES = [
+#     'Auto', 'Chinese Tradition', 'Metal', 'Reggae', 'Chinese Opera',
+#     "pop", "electronic", "hip hop", "rock", "jazz", "blues", "classical",
+#     "rap", "country", "classic rock", "hard rock", "folk", "soul",
+#     "dance, electronic", "rockabilly", "dance, dancepop, house, pop",
+#     "reggae", "experimental", "dance, pop", "dance, deephouse, electronic",
+#     "k-pop", "experimental pop", "pop punk", "rock and roll", "R&B",
+#     "varies", "pop rock",
+# ]
+
+auto_prompt_type = ['Pop', 'R&B', 'Dance', 'Jazz', 'Folk', 'Rock', 'Chinese Style', 'Chinese Tradition', 'Metal', 'Reggae', 'Chinese Opera', 'Auto']
+GENRES = auto_prompt_type
 
 # “合成器与钢琴”，“钢琴与鼓”，“钢琴与合成器”，
 # “合成器与鼓”，“钢琴与弦乐”，“吉他与鼓”，
@@ -115,7 +219,51 @@ INSTRUMENTATIONS = [
 ]
 
 # 音色：“黑暗的”、“明亮的”、“温暖的”、“岩石”、“变化的”、“柔和的”、“嗓音”
-TIMBRES = ["dark", "bright", "warm", "rock", "varies", "soft", "vocal"]
+TIMBRES = [
+    # 1. 明暗度
+    "dark",        # 幽暗（大混响/低频率主导）
+    "bright",      # 明亮（高频突出/清脆）
+    "muted",       # 闷哑（频段削减）
+    
+    # 2. 温度感
+    "warm",        # 温暖（模拟设备/磁带饱和）
+    "cold",        # 冰冷（数字感/金属质感）
+    "neutral",     # 中性
+    
+    # 3. 力度
+    "aggressive",  # 侵略性（失真/瞬态强）
+    "soft",        # 柔和（动态平缓）
+    "dynamic",     # 动态大（强弱对比明显）
+    
+    # 4. 音乐风格
+    "rock",        # 摇滚类音色
+    "electronic",  # 电子合成音色
+    "organic",     # 原声乐器质感
+    "hybrid",      # 混合音色
+    
+    # 5. 音色复杂度
+    "simple",      # 简约（纯音/正弦波）
+    "complex",     # 复杂（多层叠加）
+    "textured",    # 有纹理（颗粒感/噪声层）
+    
+    # 6. 空间感
+    "dry",         # 干声（无效果）
+    "ambient",     # 氛围感（长混响）
+    "intimate",    # 亲密感（近距离收音）
+    
+    # 7. 人声相关
+    "vocal",       # 人声特征
+    "spoken",      # 念白质感
+    "choir",       # 合唱团效果
+    
+    # 8. 特殊状态
+    "distorted",   # 失真
+    "glitchy",     # 故障音
+    "lo-fi",       # 低保真
+    "crystalline"  # 水晶般透明
+
+    "varies"       # “变化的”
+]
 
 AUTO_PROMPT_TYPES = ['Pop', 'R&B', 'Dance', 'Jazz', 'Folk', 'Rock', 
                     'Chinese Style', 'Chinese Tradition', 'Metal', 

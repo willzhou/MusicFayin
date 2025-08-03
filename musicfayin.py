@@ -283,7 +283,7 @@ def setup_ui():
     col1, col2 = st.columns([5, 2])
     
     with col1:
-        lyric_prompt = st.text_area("输入歌词主题", "如果能重来")
+        lyric_prompt = st.text_area("输入歌词主题", "若有一天，星空炸裂，乾坤颠覆，故人无数，红颜白发，魂归黄土……")
         
         # 新增时长选择器
         length_min = st.slider(
@@ -354,7 +354,8 @@ def setup_ui():
 
             if lyrics:
                 cleaned_lyrics = clean_generated_lyrics(lyrics)
-                cleaned_lyrics = st.text_area("生成的歌词", cleaned_lyrics, height=200)
+                # cleaned_lyrics = st.text_area("生成的歌词", cleaned_lyrics, height=200)
+                st.info(cleaned_lyrics)
                 st.session_state.app_state['lyrics'] = cleaned_lyrics
                 
                 # 显示时长分配
@@ -362,12 +363,15 @@ def setup_ui():
                 st.subheader("时长分配详情")
                 display_duration_breakdown(template["sections"], total_seconds)
 
-                # 自动分析歌词参数
-                with st.spinner("正在分析歌词特征..."):
-                    analysis = analyze_lyrics(cleaned_lyrics)
-                    if analysis:
-                        st.session_state.app_state['analysis_result'] = analysis
-                        st.success("歌词分析完成！")
+                # # 自动分析歌词参数
+                # with st.spinner("正在分析歌词特征..."):
+                #     analysis = analyze_lyrics(cleaned_lyrics)
+                #     if analysis:
+                #         st.session_state.app_state['analysis_result'] = analysis
+                #         st.success("歌词分析完成！")
+
+    if st.session_state.app_state.get('lyrics'):
+        st.session_state.app_state['lyrics']  = st.text_area("生成的歌词", st.session_state.app_state.get('lyrics'), height=200)
 
     # 步骤2: 分析歌词
     if st.session_state.app_state.get('lyrics'):
@@ -434,7 +438,7 @@ def setup_ui():
             default_bpm = st.session_state.app_state['analysis_result'].get('bpm', DEFAULT_BPM)
             st.session_state.app_state['analysis_result']['bpm'] = st.slider(
                 "BPM (每分钟节拍数)",
-                min_value=60,
+                min_value=10,
                 max_value=160,
                 value=default_bpm,
                 step=1,
@@ -464,11 +468,12 @@ def setup_ui():
         # 添加生成类型选择
         gen_type = st.radio(
             "生成类型",
-            options=["", "bgm", "vocal"],
+            options=["mixed", "bgm", "vocal", "separate"],
             format_func=lambda x: {
-                "": "完整歌曲",
+                "mixed": "完整歌曲",
                 "bgm": "纯音乐(BGM)", 
-                "vocal": "纯人声"
+                "vocal": "纯人声",
+                "separate": "生成单独的人声和伴奏音轨"
             }[x],
             horizontal=True,
             help="选择生成完整歌曲、纯背景音乐或纯人声"

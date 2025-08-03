@@ -50,10 +50,14 @@ echo "SAVE_DIR: $SAVE_DIR"
 echo "GEN_TYPE: $GEN_TYPE"
 
 # 执行主程序
+# usage: generate.py [-h] --ckpt_path CKPT_PATH --input_jsonl INPUT_JSONL
+#                    --save_dir SAVE_DIR [--generate_type GENERATE_TYPE]
+#                                       [--use_flash_attn] [--low_mem]
 python3 "${BASE_DIR}/generate.py" \
-    "$CKPT_PATH" \
-    "$JSONL" \
-    "$SAVE_DIR" \
-    "$GEN_TYPE"
+    --ckpt_path "$CKPT_PATH" \
+    --input_jsonl "$JSONL" \
+    --save_dir "$SAVE_DIR" \
+    --generate_type "$GEN_TYPE" \
+    --use_flash_attn
 
 echo "[$(date)] Generation completed successfully"
